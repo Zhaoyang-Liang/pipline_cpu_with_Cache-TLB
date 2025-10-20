@@ -8,20 +8,17 @@
 module mem(                          // 访存级
     input              clk,          // 时钟
     input              MEM_valid,    // 访存级有效信号
-    input      [154:0] EXE_MEM_bus_r,// EXE->MEM总线
+    input      [153:0] EXE_MEM_bus_r,// EXE->MEM总线
     input      [ 31:0] dm_rdata,     // 访存读数据
     output     [ 31:0] dm_addr,      // 访存读写地址
     output reg [  3:0] dm_wen,       // 访存写使能
     output reg [ 31:0] dm_wdata,     // 访存写数据
     output             MEM_over,     // MEM模块执行完成
-    output     [118:0] MEM_WB_bus,   // MEM->WB总线
+    output     [117:0] MEM_WB_bus,   // MEM->WB总线
     
     //5级流水新增接口
     input              MEM_allow_in, // MEM级允许下级进入
     output     [  4:0] MEM_wdest,    // MEM级要写回寄存器堆的目标地址号
-
-    output wire [4:0] MEM_to_EXEforeword_wdest, //MEM级要写回寄存器堆的目标地址号
-    output wire [31:0] MEM_to_EXEforeword_wdata, //MEM级要写回寄存器堆的数据
      
     //展示PC
     output     [ 31:0] MEM_pc
@@ -49,8 +46,7 @@ module mem(                          // 访存级
     wire [4:0] rf_wdest;  //写回的目的寄存器
     
     //pc
-    wire [31:0] pc; 
-
+    wire [31:0] pc;    
     assign {mem_control,
             store_data,
             exe_result,
@@ -156,9 +152,6 @@ module mem(                          // 访存级
 //-----{MEM模块的dest值}begin
    //只有在MEM模块有效时，其写回目的寄存器号才有意义
     assign MEM_wdest = rf_wdest & {5{MEM_valid}};
-
-    assign MEM_to_EXEforeword_wdest = MEM_valid ? MEM_wdest : 5'd0;
-    assign MEM_to_EXEforeword_wdata = MEM_valid ? exe_result : 32'd0;
 //-----{MEM模块的dest值}end
 
 //-----{MEM->WB总线}begin
@@ -171,8 +164,7 @@ module mem(                          // 访存级
                          hi_write,lo_write,                 // HI/LO写使能，新增
                          mfhi,mflo,                         // WB需要使用的信号,新增
                          mtc0,mfc0,cp0r_addr,syscall,eret,  // WB需要使用的信号,新增
-                         pc                                  // PC值
-                         };
+                         pc};                               // PC值
 //-----{MEM->WB总线}begin
 
 //-----{展示MEM模块的PC值}begin

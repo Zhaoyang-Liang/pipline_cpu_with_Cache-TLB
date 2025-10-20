@@ -9,10 +9,10 @@
                                  // 此处实现的Exception只有SYSCALL
 module wb(                       // 写回级
     input          WB_valid,     // 写回级有效
-    input  [116:0] MEM_WB_bus_r, // MEM->WB总线
-    output         rf_wen,    // 写回阶段：寄存器堆写使能信号，高电平表示写寄存器
-    output [  4:0] rf_wdest,  // 写回阶段：寄存器堆写地址，指明要写入哪个寄存器
-    output [ 31:0] rf_wdata,  // 写回阶段：写入寄存器堆的数据
+    input  [117:0] MEM_WB_bus_r, // MEM->WB总线
+    output         rf_wen,       // 寄存器写使能
+    output [  4:0] rf_wdest,     // 寄存器写地址
+    output [ 31:0] rf_wdata,     // 寄存器写数据
     output         WB_over,      // WB模块执行完成
 
      //5级流水新增接口
@@ -23,15 +23,10 @@ module wb(                       // 写回级
      output         cancel,       // syscall和eret到达写回级时会发出cancel信号，
                                   // 取消已经取出的正在其他流水级执行的指令
  
-    // 前推专用信号
-    output wire [4:0] WB_to_EXEforeword_wdest, //WB级要写回寄存器堆的目标地址号
-    output wire [31:0] WB_to_EXEforeword_wdata, //WB级要写回寄存器堆的数据
-
      //展示PC和HI/LO值
      output [ 31:0] WB_pc,
      output [ 31:0] HI_data,
      output [ 31:0] LO_data
-
 );
 //-----{MEM->WB总线}begin    
     //MEM传来的result
@@ -56,7 +51,6 @@ module wb(                       // 写回级
     
     //pc
     wire [31:0] pc;    
-
     assign {wen,
             wdest,
             mem_result,
@@ -203,9 +197,6 @@ module wb(                       // 写回级
 //-----{WB模块的dest值}begin
    //只有在WB模块有效时，其写回目的寄存器号才有意义
     assign WB_wdest = rf_wdest & {5{WB_valid}};
-    // 前推专用信号
-    assign WB_to_EXEforeword_wdest = WB_valid ? WB_wdest : 5'd0;
-    assign WB_to_EXEforeword_wdata = WB_valid ? mem_result : 32'd0;
 //-----{WB模块的dest值}end
 
 //-----{展示WB模块的PC值和HI/LO寄存器的值}begin

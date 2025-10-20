@@ -15,10 +15,10 @@ module decode(                      // 译码级
     output     [ 32:0] jbr_bus,     // 跳转总线
 //  output             inst_jbr,    // 指令为跳转分支指令,五级流水不需要
     output             ID_over,     // ID模块执行完成
-    output     [177:0] ID_EXE_bus,  // ID->EXE总线
+    output     [166:0] ID_EXE_bus,  // ID->EXE总线
     
     //5级流水新增
-    input              IF_over,     //对于分支指令，需要该信号
+     input              IF_over,     //对于分支指令，需要该信号
     input      [  4:0] EXE_wdest,   // EXE级要写回寄存器堆的目标地址号
     input      [  4:0] MEM_wdest,   // MEM级要写回寄存器堆的目标地址号
     input      [  4:0] WB_wdest,    // WB级要写回寄存器堆的目标地址号
@@ -53,20 +53,19 @@ module decode(                      // 译码级
     assign target = inst[25:0];   // 目标地址
     assign cp0r_sel= inst[2:0];   // cp0寄存器的select域
 
-    // 实现指令列表 - MIPS指令集指令定义
-    // 算术运算指令
-    wire inst_ADDU, inst_SUBU , inst_SLT , inst_AND;  // ADDU:无符号加法, SUBU:无符号减法, SLT:小于则置位, AND:按位与
-    wire inst_NOR , inst_OR   , inst_XOR , inst_SLL;  // NOR:按位或非, OR:按位或, XOR:按位异或, SLL:逻辑左移
-    wire inst_SRL , inst_ADDIU, inst_BEQ , inst_BNE;  // SRL:逻辑右移, ADDIU:立即数无符号加法, BEQ:相等跳转, BNE:不等跳转
-    wire inst_LW  , inst_SW   , inst_LUI , inst_J;    // LW:装载字, SW:存储字, LUI:立即数装载高位, J:跳转
-    wire inst_SLTU, inst_JALR , inst_JR  , inst_SLLV; // SLTU:无符号小于则置位, JALR:跳转寄存器并链接, JR:跳转寄存器, SLLV:变量逻辑左移
-    wire inst_SRA , inst_SRAV , inst_SRLV, inst_SLTIU; // SRA:算术右移, SRAV:变量算术右移, SRLV:变量逻辑右移, SLTIU:无符号小于立即数则置位
-    wire inst_SLTI, inst_BGEZ , inst_BGTZ, inst_BLEZ; // SLTI:小于立即数则置位, BGEZ:大于等于0跳转, BGTZ:大于0跳转, BLEZ:小于等于0跳转
-    wire inst_BLTZ, inst_LB   , inst_LBU , inst_SB;   // BLTZ:小于0跳转, LB:装载字节(符号扩展), LBU:装载字节(无符号扩展), SB:存储字节
-    wire inst_ANDI, inst_ORI  , inst_XORI, inst_JAL;  // ANDI:立即数与, ORI:立即数或, XORI:立即数异或, JAL:跳转并链接
-    wire inst_MULT, inst_MFLO , inst_MFHI, inst_MTLO; // MULT:乘法, MFLO:从LO寄存器读取, MFHI:从HI寄存器读取, MTLO:向LO寄存器写入
-    wire inst_MTHI, inst_MFC0 , inst_MTC0;            // MTHI:向HI寄存器写入, MFC0:从协处理器0读取, MTC0:向协处理器0写入
-    wire inst_ERET, inst_SYSCALL;                     // ERET:异常返回, SYSCALL:系统调用
+    // 实现指令列表
+    wire inst_ADDU, inst_SUBU , inst_SLT , inst_AND;
+    wire inst_NOR , inst_OR   , inst_XOR , inst_SLL;
+    wire inst_SRL , inst_ADDIU, inst_BEQ , inst_BNE;
+    wire inst_LW  , inst_SW   , inst_LUI , inst_J;
+    wire inst_SLTU, inst_JALR , inst_JR  , inst_SLLV;
+    wire inst_SRA , inst_SRAV , inst_SRLV, inst_SLTIU;
+    wire inst_SLTI, inst_BGEZ , inst_BGTZ, inst_BLEZ;
+    wire inst_BLTZ, inst_LB   , inst_LBU , inst_SB;
+    wire inst_ANDI, inst_ORI  , inst_XORI, inst_JAL;
+    wire inst_MULT, inst_MFLO , inst_MFHI, inst_MTLO;
+    wire inst_MTHI, inst_MFC0 , inst_MTC0;
+    wire inst_ERET, inst_SYSCALL;
     wire op_zero;  // 操作码全0
     wire sa_zero;  // sa域全0
     assign op_zero = ~(|op);
@@ -195,18 +194,17 @@ module decode(                      // 译码级
                       | inst_SYSCALL;
 //-----{指令译码}end
 
-
 //-----{分支指令执行}begin
    //bd_pc,分支跳转指令参与计算的为延迟槽指令的PC值，即当前分支指令的PC+4
     wire [31:0] bd_pc;   //延迟槽指令PC值
-    assign bd_pc = pc + 3'b100; // +4 
+    assign bd_pc = pc + 3'b100;
     
     //无条件跳转
     wire        j_taken;
     wire [31:0] j_target;
     assign j_taken = inst_J | inst_JAL | inst_jr;
     //寄存器跳转地址为rs_value,其他跳转为{bd_pc[31:28],target,2'b00}
-    assign j_target = inst_jr ? rs_value : {bd_pc[31:28],target,2'b00}; // 延迟槽（下一条指令）的高4bit+目标地址+2'b00
+    assign j_target = inst_jr ? rs_value : {bd_pc[31:28],target,2'b00};
 
     //branch指令
     wire rs_equql_rt;
@@ -239,21 +237,12 @@ module decode(                      // 译码级
 
 //-----{ID执行完成}begin
     //由于是流水的，存在数据相关
-    // wire rs_wait;
-    // wire rt_wait;
-    // assign rs_wait = ~inst_no_rs & (rs!=5'd0) // 有效性
-    //                & ( (rs==EXE_wdest) | (rs==MEM_wdest) | (rs==WB_wdest) ); // 数据相关
-
-    // assign rt_wait = ~inst_no_rt & (rt!=5'd0)
-    //                & ( (rt==EXE_wdest) | (rt==MEM_wdest) | (rt==WB_wdest) );
-
     wire rs_wait;
     wire rt_wait;
-    assign rs_wait = ~inst_no_rs & (rs!=5'd0) // 有效性
-                   & ( (rs==WB_wdest) ); // 数据相关
-
+    assign rs_wait = ~inst_no_rs & (rs!=5'd0)
+                   & ( (rs==EXE_wdest) | (rs==MEM_wdest) | (rs==WB_wdest) );
     assign rt_wait = ~inst_no_rt & (rt!=5'd0)
-                   & ( (rt==WB_wdest) );
+                   & ( (rt==EXE_wdest) | (rt==MEM_wdest) | (rt==WB_wdest) );
     
     //对于分支跳转指令，只有在IF执行完成后，才可以算ID完成；
     //否则，ID级先完成了，而IF还在取指令，则next_pc不能锁存到PC里去，
@@ -305,7 +294,7 @@ module decode(                      // 译码级
     assign mem_control = {inst_load,
                           inst_store,
                           ls_word,
-                          lb_sign};
+                          lb_sign };
                           
     //写回需要用到的信息
     wire mfhi;
@@ -334,10 +323,8 @@ module decode(                      // 译码级
                          mem_control,store_data,               //MEM需用的信号
                          mfhi,mflo,                            //WB需用的信号,新增
                          mtc0,mfc0,cp0r_addr,syscall,eret,     //WB需用的信号,新增
-                         rf_wen,rf_wdest,                      //WB需用的信号
-                         pc,                                   //PC值
-                         rs,rt                                 //源寄存器号
-                         };                                 
+                         rf_wen, rf_wdest,                     //WB需用的信号
+                         pc};                                  //PC值
 //-----{ID->EXE总线}end
 
 //-----{展示ID模块的PC值}begin

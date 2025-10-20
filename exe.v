@@ -7,24 +7,16 @@
 //*************************************************************************
 module exe(                         // 执行级
     input              EXE_valid,   // 执行级有效信号
-    input      [177:0] ID_EXE_bus_r,// ID->EXE总线
+    input      [166:0] ID_EXE_bus_r,// ID->EXE总线
     output             EXE_over,    // EXE模块执行完成
-    output     [154:0] EXE_MEM_bus, // EXE->MEM总线
+    output     [153:0] EXE_MEM_bus, // EXE->MEM总线
     
      //5级流水新增
-     input             clk,       // 时钟
-     input             resetn,    // 复位信号
-     output     [  4:0] EXE_wdest,   // EXE级要写回寄存器堆的目标地址号
+    input             clk,       // 时钟
+    output     [  4:0] EXE_wdest,   // EXE级要写回寄存器堆的目标地址号
  
     //展示PC
-    output     [ 31:0] EXE_pc,
-
-    // 前推专用信号
-    input wire [4:0] MEM_to_EXEforeword_wdest, //MEM级要写回寄存器堆的目标地址号
-    input wire [4:0] WB_to_EXEforeword_wdest, //WB级要写回寄存器堆的目标地址号
-
-    input wire [31:0] MEM_to_EXEforeword_wdata, //MEM级要写回寄存器堆的数据
-    input wire [31:0] WB_to_EXEforeword_wdata //WB级要写回寄存器堆的数据
+    output     [ 31:0] EXE_pc
 );
 //-----{ID->EXE总线}begin
     //EXE需要用到的信息
@@ -38,7 +30,7 @@ module exe(                         // 执行级
     //访存需要用到的load/store信息
     wire [3:0] mem_control;  //MEM需要使用的控制信号
     wire [31:0] store_data;  //store操作的存的数据
-
+                          
     //写回需要用到的信息
     wire mfhi;
     wire mflo;
@@ -49,14 +41,9 @@ module exe(                         // 执行级
     wire       eret;
     wire       rf_wen;    //写回的寄存器写使能
     wire [4:0] rf_wdest;  //写回的目的寄存器
-
+    
     //pc
     wire [31:0] pc;
-
-    //源寄存器
-    wire [4:0] rs;
-    wire [4:0] rt;
-
     assign {multiply,
             mthi,
             mtlo,
@@ -74,45 +61,16 @@ module exe(                         // 执行级
             eret,
             rf_wen,
             rf_wdest,
-            pc,
-            rs,rt          } = ID_EXE_bus_r;
+            pc          } = ID_EXE_bus_r;
 //-----{ID->EXE总线}end
-
-
-
-//-----{forward}begin
-    wire [1:0] forward_a;
-    wire [1:0] forward_b;
-    foreword foreword_module(
-        .clk(clk),
-        .resetn(resetn),
-        .rs(rs),
-        .rt(rt),
-        .MEM_wdest(MEM_to_EXEforeword_wdest),
-        .WB_wdest(WB_to_EXEforeword_wdest),
-        .forward_a(forward_a),
-        .forward_b(forward_b)
-    );
-
-    // 前推后的ALU操作数
-    wire [31:0] alu_operand1_forwarded;
-    wire [31:0] alu_operand2_forwarded;
-    
-    assign alu_operand1_forwarded = forward_a == 2'b10 ? MEM_to_EXEforeword_wdata :
-                                   forward_a == 2'b01 ? WB_to_EXEforeword_wdata :
-                                   alu_operand1;
-    assign alu_operand2_forwarded = forward_b == 2'b10 ? MEM_to_EXEforeword_wdata :
-                                   forward_b == 2'b01 ? WB_to_EXEforeword_wdata :
-                                   alu_operand2;
-//-----{forward}end
 
 //-----{ALU}begin
     wire [31:0] alu_result;
 
     alu alu_module(
         .alu_control  (alu_control ),  // I, 12, ALU控制信号
-        .alu_src1     (alu_operand1_forwarded),  // I, 32, ALU操作数1（前推后）
-        .alu_src2     (alu_operand2_forwarded),  // I, 32, ALU操作数2（前推后）
+        .alu_src1     (alu_operand1),  // I, 32, ALU操作数1
+        .alu_src2     (alu_operand2),  // I, 32, ALU操作数2
         .alu_result   (alu_result  )   // O, 32, ALU结果
     );
 //-----{ALU}end
@@ -126,8 +84,8 @@ module exe(                         // 执行级
     multiply multiply_module (
         .clk       (clk       ),
         .mult_begin(mult_begin  ),
-        .mult_op1  (alu_operand1_forwarded), 
-        .mult_op2  (alu_operand2_forwarded),
+        .mult_op1  (alu_operand1), 
+        .mult_op2  (alu_operand2),
         .product   (product   ),
         .mult_end  (mult_end  )
     );
@@ -151,10 +109,10 @@ module exe(                         // 执行级
     wire        lo_write;
     //要写入HI的值放在exe_result里，包括MULT和MTHI指令,
     //要写入LO的值放在lo_result里，包括MULT和MTLO指令,
-    assign exe_result = mthi     ? alu_operand1_forwarded :
-                        mtc0     ? alu_operand2_forwarded : 
+    assign exe_result = mthi     ? alu_operand1 :
+                        mtc0     ? alu_operand2 : 
                         multiply ? product[63:32] : alu_result;
-    assign lo_result  = mtlo ? alu_operand1_forwarded : product[31:0];
+    assign lo_result  = mtlo ? alu_operand1 : product[31:0];
     assign hi_write   = multiply | mthi;
     assign lo_write   = multiply | mtlo;
     
@@ -165,8 +123,7 @@ module exe(                         // 执行级
                           mfhi,mflo,                       //WB需用的信号,新增
                           mtc0,mfc0,cp0r_addr,syscall,eret,//WB需用的信号,新增
                           rf_wen,rf_wdest,                 //WB需用的信号
-                          pc  //PC
-                          };                           
+                          pc};                             //PC
 //-----{EXE->MEM总线}end
 
 //-----{展示EXE模块的PC值}begin

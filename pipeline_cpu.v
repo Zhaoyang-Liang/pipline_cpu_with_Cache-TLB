@@ -46,7 +46,6 @@ module pipeline_cpu(  // 多周期cpu
     wire EXE_allow_in;
     wire MEM_allow_in;
     wire WB_allow_in;
-
     
     // syscall和eret到达写回级时会发出cancel信号，
     wire cancel;    // 取消已经取出的正在其他流水级执行的指令
@@ -78,7 +77,7 @@ module pipeline_cpu(  // 多周期cpu
         begin
             ID_valid <= 1'b0;
         end
-        else if (ID_allow_in) //  这里简化了一下，等价写法是：else if (ID_allow_in & IF_over) ID_valid<=1'b1 end else if (ID_allow_in & ~IF_over) ID_valid<=1'b0 end // 如果y_allow_in 是 0 ，那么数据肯定不会流入，因此不用处理valid
+        else if (ID_allow_in)
         begin
             ID_valid <= IF_over;
         end
@@ -130,15 +129,15 @@ module pipeline_cpu(  // 多周期cpu
 
 //--------------------------{5级间的总线}begin---------------------------//
     wire [ 63:0] IF_ID_bus;   // IF->ID级总线
-    wire [177:0] ID_EXE_bus;  // ID->EXE级总线
-    wire [154:0] EXE_MEM_bus; // EXE->MEM级总线
-    wire [116:0] MEM_WB_bus;  // MEM->WB级总线
+    wire [166:0] ID_EXE_bus;  // ID->EXE级总线
+    wire [153:0] EXE_MEM_bus; // EXE->MEM级总线
+    wire [117:0] MEM_WB_bus;  // MEM->WB级总线
     
     //锁存以上总线信号
     reg [ 63:0] IF_ID_bus_r;
-    reg [177:0] ID_EXE_bus_r;
-    reg [154:0] EXE_MEM_bus_r;
-    reg [116:0] MEM_WB_bus_r;
+    reg [166:0] ID_EXE_bus_r;
+    reg [153:0] EXE_MEM_bus_r;
+    reg [117:0] MEM_WB_bus_r;
     
     //IF到ID的锁存信号
     always @(posedge clk)
@@ -206,14 +205,6 @@ module pipeline_cpu(  // 多周期cpu
     
     //WB与IF间的交互信号
     wire [32:0] exc_bus;
-
-    // 前推专用信号
-    wire [4:0] MEM_to_EXEforeword_wdest;
-    wire [4:0] WB_to_EXEforeword_wdest;
-    wire [31:0] MEM_to_EXEforeword_wdata;
-    wire [31:0] WB_to_EXEforeword_wdata;
-    
-    
 //---------------------------{其他交互信号}end---------------------------//
 
 //-------------------------{各模块实例化}begin---------------------------//
@@ -258,7 +249,7 @@ module pipeline_cpu(  // 多周期cpu
         .WB_wdest    (WB_wdest    ),// I, 5
         
         //展示PC
-        .ID_pc       (ID_pc       )  // O, 32
+        .ID_pc       (ID_pc       ) // O, 32
     ); 
 
     exe EXE_module(                   // 执行级
@@ -269,17 +260,10 @@ module pipeline_cpu(  // 多周期cpu
         
         //5级流水新增
         .clk         (clk         ),  // I, 1
-        .resetn      (resetn      ),  // I, 1
         .EXE_wdest   (EXE_wdest   ),  // O, 5
         
         //展示PC
-        .EXE_pc      (EXE_pc      ),  // O, 32
-
-        // 前推
-        .MEM_to_EXEforeword_wdest(MEM_to_EXEforeword_wdest), // I, 5
-        .WB_to_EXEforeword_wdest(WB_to_EXEforeword_wdest), // I, 5
-        .MEM_to_EXEforeword_wdata(MEM_to_EXEforeword_wdata), // I, 32
-        .WB_to_EXEforeword_wdata(WB_to_EXEforeword_wdata) // I, 32
+        .EXE_pc      (EXE_pc      )   // O, 32
     );
 
     mem MEM_module(                     // 访存级
@@ -298,11 +282,7 @@ module pipeline_cpu(  // 多周期cpu
         .MEM_wdest    (MEM_wdest    ),  // O, 5
         
         //展示PC
-        .MEM_pc       (MEM_pc       ),   // O, 32
-
-        // 前推
-        .MEM_to_EXEforeword_wdest(MEM_to_EXEforeword_wdest), //O, 5
-        .MEM_to_EXEforeword_wdata(MEM_to_EXEforeword_wdata) //O, 32
+        .MEM_pc       (MEM_pc       )   // O, 32
     );          
  
     wb WB_module(                     // 写回级
@@ -311,11 +291,11 @@ module pipeline_cpu(  // 多周期cpu
         .rf_wen      (rf_wen      ),  // O, 1
         .rf_wdest    (rf_wdest    ),  // O, 5
         .rf_wdata    (rf_wdata    ),  // O, 32
-        .WB_over     (WB_over     ),  // O, 1
+          .WB_over     (WB_over     ),  // O, 1
         
         //5级流水新增接口
         .clk         (clk         ),  // I, 1
-        .resetn      (resetn      ),  // I, 1
+      .resetn      (resetn      ),  // I, 1
         .exc_bus     (exc_bus     ),  // O, 32
         .WB_wdest    (WB_wdest    ),  // O, 5
         .cancel      (cancel      ),  // O, 1
@@ -323,12 +303,7 @@ module pipeline_cpu(  // 多周期cpu
         //展示PC和HI/LO值
         .WB_pc       (WB_pc       ),  // O, 32
         .HI_data     (HI_data     ),  // O, 32
-        .LO_data     (LO_data     ),    // O, 32
-
-        
-        // 前推
-        .WB_to_EXEforeword_wdest(WB_to_EXEforeword_wdest), //O, 5
-        .WB_to_EXEforeword_wdata(WB_to_EXEforeword_wdata) //O, 32
+        .LO_data     (LO_data     )   // O, 32
     );
 
     inst_rom inst_rom_module(         // 指令存储器

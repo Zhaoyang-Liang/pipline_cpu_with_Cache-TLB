@@ -52,7 +52,7 @@ module fetch(                    // 取指级
     begin
         if (!resetn)
         begin
-            pc <= `STARTADDR; // 复位，取程序起始地址 // testbench 中对其最开始设置成restn = 0 ，因此这里会从STARTADDR开始
+            pc <= `STARTADDR; // 复位，取程序起始地址
         end
         else if (next_fetch)
         begin
@@ -82,7 +82,7 @@ module fetch(                    // 取指级
         begin
             IF_over <= IF_valid;
         end
-    end// 实际上这里valid 信号已经不太重要了
+    end
     //如果指令rom为异步读的，则IF_valid即是IF_over信号，
     //即取指一拍完成
 //-----{IF执行完成}end
