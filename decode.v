@@ -5,6 +5,13 @@
 //   > 作者  : LOONGSON
 //   > 日期  : 2016-04-14
 //*************************************************************************
+`define IF_ID_BUS_WIDTH     64
+`define ID_EXE_BUS_WIDTH    167
+`define EXE_MEM_BUS_WIDTH   154
+`define MEM_WB_BUS_WIDTH    118
+`define JBR_BUS_WIDTH       33
+`define EXC_BUS_WIDTH       33
+
 module decode(                      // 译码级
     input              ID_valid,    // 译码级有效信号
     input      [ 63:0] IF_ID_bus_r, // IF->ID总线
@@ -15,14 +22,28 @@ module decode(                      // 译码级
     output     [ 32:0] jbr_bus,     // 跳转总线
 //  output             inst_jbr,    // 指令为跳转分支指令,五级流水不需要
     output             ID_over,     // ID模块执行完成
-    output     [ID_EXE_BUS_WIDTH - 1:0] ID_EXE_bus,  // ID->EXE总线
+    output     [166:0] ID_EXE_bus,  // ID->EXE总线
     
     //5级流水新增
-     input              IF_over,     //对于分支指令，需要该信号
+    input              IF_over,     //对于分支指令，需要该信号
     input      [  4:0] EXE_wdest,   // EXE级要写回寄存器堆的目标地址号
     input      [  4:0] MEM_wdest,   // MEM级要写回寄存器堆的目标地址号
     input      [  4:0] WB_wdest,    // WB级要写回寄存器堆的目标地址号
     
+    // 旁路数据输入
+    input      [ 31:0] EXE_result,  // EXE级结果
+    input      [ 31:0] MEM_result,  // MEM级结果
+    input      [ 31:0] WB_result,   // WB级结果
+    
+    // 旁路控制信号
+    input              EXE_valid,   // EXE级有效
+    input              MEM_valid,   // MEM级有效
+    input              WB_valid,    // WB级有效
+    
+    // EXE级指令类型信息（用于Load-Use相关检测）
+    input              EXE_inst_load,  // EXE级Load指令
+    input              EXE_inst_mult,  // EXE级乘法指令
+
     //展示PC
     output     [ 31:0] ID_pc
 );
@@ -194,8 +215,66 @@ module decode(                      // 译码级
                       | inst_SYSCALL;
 //-----{指令译码}end
 
-//-----{分支指令执行}begin
-   //bd_pc,分支跳转指令参与计算的为延迟槽指令的PC值，即当前分支指令的PC+4
+
+// -----{特殊旁路类型指令判断}begin
+    // 这些信号已经在指令译码部分定义了，这里不需要重复定义
+//-----{特殊旁路类型指令判断}end
+
+//-----{旁路检测单元实例化}begin
+    wire [31:0] bypassed_rs_value;
+    wire [31:0] bypassed_rt_value;
+    wire        stall_required;
+    wire        rs_bypass_valid;
+    wire        rt_bypass_valid;
+    wire [1:0]  rs_bypass_source;
+    wire [1:0]  rt_bypass_source;
+
+    bypass_unit bypass_unit_inst(
+        // 当前指令信息
+        .rs(rs),
+        .rt(rt),
+        .rs_value(rs_value),
+        .rt_value(rt_value),
+        
+        // 后续流水级信息
+        .EXE_valid(EXE_valid),
+        .MEM_valid(MEM_valid),
+        .WB_valid(WB_valid),
+        .EXE_wdest(EXE_wdest),
+        .MEM_wdest(MEM_wdest),
+        .WB_wdest(WB_wdest),
+        .EXE_result(EXE_result),
+        .MEM_result(MEM_result),
+        .WB_result(WB_result),
+        
+        // 指令类型信息
+        .inst_load(inst_load),
+        .inst_mult(inst_mult),
+        .inst_mfhi(inst_mfhi),
+        .inst_mflo(inst_mflo),
+        .inst_mfc0(inst_mfc0),
+        
+        // EXE级指令类型信息
+        .EXE_inst_load(EXE_inst_load),
+        .EXE_inst_mult(EXE_inst_mult),
+        
+        // 旁路结果输出
+        .bypassed_rs_value(bypassed_rs_value),
+        .bypassed_rt_value(bypassed_rt_value),
+        .stall_required(stall_required),
+        .rs_bypass_valid(rs_bypass_valid),
+        .rt_bypass_valid(rt_bypass_valid),
+        .rs_bypass_source(rs_bypass_source),
+        .rt_bypass_source(rt_bypass_source)
+    );
+
+//-----{旁路检测单元实例化}end
+
+
+
+
+
+//bd_pc,分支跳转指令参与计算的为延迟槽指令的PC值，即当前分支指令的PC+4
     wire [31:0] bd_pc;   //延迟槽指令PC值
     assign bd_pc = pc + 3'b100;
     
@@ -204,15 +283,15 @@ module decode(                      // 译码级
     wire [31:0] j_target;
     assign j_taken = inst_J | inst_JAL | inst_jr;
     //寄存器跳转地址为rs_value,其他跳转为{bd_pc[31:28],target,2'b00}
-    assign j_target = inst_jr ? rs_value : {bd_pc[31:28],target,2'b00};
+    assign j_target = inst_jr ? bypassed_rs_value : {bd_pc[31:28],target,2'b00};
 
     //branch指令
     wire rs_equql_rt;
     wire rs_ez;
     wire rs_ltz;
-    assign rs_equql_rt = (rs_value == rt_value);  // GPR[rs]==GPR[rt]
-    assign rs_ez       = ~(|rs_value);            // rs寄存器值为0
-    assign rs_ltz      = rs_value[31];            // rs寄存器值小于0
+    assign rs_equql_rt = (bypassed_rs_value == bypassed_rt_value);  // GPR[rs]==GPR[rt]
+    assign rs_ez       = ~(|bypassed_rs_value);            // rs寄存器值为0
+    assign rs_ltz      = bypassed_rs_value[31];            // rs寄存器值小于0
     wire br_taken;
     wire [31:0] br_target;
     assign br_taken = inst_BEQ  & rs_equql_rt       // 相等跳转
@@ -237,19 +316,19 @@ module decode(                      // 译码级
 
 //-----{ID执行完成}begin
     //由于是流水的，存在数据相关
-    wire rs_wait;
-    wire rt_wait;
-    assign rs_wait = ~inst_no_rs & (rs!=5'd0)
-                   & ( (rs==EXE_wdest) | (rs==MEM_wdest) | (rs==WB_wdest) );
-    assign rt_wait = ~inst_no_rt & (rt!=5'd0)
-                   & ( (rt==EXE_wdest) | (rt==MEM_wdest) | (rt==WB_wdest) );
+    // wire rs_wait;
+    // wire rt_wait;
+    // assign rs_wait = ~inst_no_rs & (rs!=5'd0)
+    //                & ( (rs==EXE_wdest) | (rs==MEM_wdest) | (rs==WB_wdest) );
+    // assign rt_wait = ~inst_no_rt & (rt!=5'd0)
+    //                & ( (rt==EXE_wdest) | (rt==MEM_wdest) | (rt==WB_wdest) );
     
     //对于分支跳转指令，只有在IF执行完成后，才可以算ID完成；
     //否则，ID级先完成了，而IF还在取指令，则next_pc不能锁存到PC里去，
     //那么等IF完成，next_pc能锁存到PC里去时，jbr_bus上的数据已变成无效，
     //导致分支跳转失败
     //(~inst_jbr | IF_over)即是(~inst_jbr | (inst_jbr & IF_over))
-    assign ID_over = ID_valid & ~rs_wait & ~rt_wait & (~inst_jbr | IF_over);
+    assign ID_over = ID_valid & (~inst_jbr | IF_over) & ~stall_required;
 //-----{ID执行完成}end
 
 //-----{ID->EXE总线}begin
@@ -268,10 +347,10 @@ module decode(                      // 译码级
     //所谓链接跳转是将跳转返回的PC值存放到31号寄存器里
     //在流水CPU里，考虑延迟槽，故链接跳转需要计算PC+8，存放到31号寄存器里
     assign alu_operand1 = inst_j_link ? pc : 
-                          inst_shf_sa ? {27'd0,sa} : rs_value;
+                          inst_shf_sa ? {27'd0,sa} : bypassed_rs_value;
     assign alu_operand2 = inst_j_link ? 32'd8 :  
                           inst_imm_zero ? {16'd0, imm} :
-                          inst_imm_sign ?  {{16{imm[15]}}, imm} : rt_value;
+                          inst_imm_sign ?  {{16{imm[15]}}, imm} : bypassed_rt_value;
     assign alu_control = {inst_add,        // ALU操作码，独热编码
                           inst_sub,
                           inst_slt,
@@ -317,7 +396,7 @@ module decode(                      // 译码级
     assign rf_wdest = inst_wdest_rt ? rt :     //在不写寄存器堆时设置为0
                       inst_wdest_31 ? 5'd31 :  //以便能准确判断数据相关
                       inst_wdest_rd ? rd : 5'd0;
-    assign store_data = rt_value;
+    assign store_data = bypassed_rt_value;
     assign ID_EXE_bus = {multiply,mthi,mtlo,                   //EXE需用的信息,新增
                          alu_control,alu_operand1,alu_operand2,//EXE需用的信息
                          mem_control,store_data,               //MEM需用的信号

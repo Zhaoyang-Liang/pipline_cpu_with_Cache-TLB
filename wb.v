@@ -5,6 +5,8 @@
 //   > 作者  : LOONGSON
 //   > 日期  : 2016-04-14
 //*************************************************************************
+
+
 `define EXC_ENTER_ADDR 32'd0     // Excption入口地址，
                                  // 此处实现的Exception只有SYSCALL
 module wb(                       // 写回级
@@ -16,17 +18,20 @@ module wb(                       // 写回级
     output         WB_over,      // WB模块执行完成
 
      //5级流水新增接口
-     input             clk,       // 时钟
+    input             clk,       // 时钟
     input             resetn,    // 复位信号，低电平有效
-     output [ 32:0] exc_bus,      // Exception pc总线
-     output [  4:0] WB_wdest,     // WB级要写回寄存器堆的目标地址号
-     output         cancel,       // syscall和eret到达写回级时会发出cancel信号，
+    output [ 32:0] exc_bus,      // Exception pc总线
+    output [  4:0] WB_wdest,     // WB级要写回寄存器堆的目标地址号
+    output         cancel,       // syscall和eret到达写回级时会发出cancel信号，
                                   // 取消已经取出的正在其他流水级执行的指令
  
+    // 新增旁路数据输出
+    output     [ 31:0] WB_result,   // WB级结果，用于旁路
+
      //展示PC和HI/LO值
-     output [ 31:0] WB_pc,
-     output [ 31:0] HI_data,
-     output [ 31:0] LO_data
+    output [ 31:0] WB_pc,
+    output [ 31:0] HI_data,
+    output [ 31:0] LO_data
 );
 //-----{MEM->WB总线}begin    
     //MEM传来的result
@@ -180,6 +185,8 @@ module wb(                       // 写回级
     assign rf_wdata = mfhi ? hi :
                       mflo ? lo :
                       mfc0 ? cp0r_rdata : mem_result;
+
+    assign WB_result = rf_wdata;  // ! 旁路输出
 //-----{WB->regfile信号}end
 
 //-----{Exception pc信号}begin

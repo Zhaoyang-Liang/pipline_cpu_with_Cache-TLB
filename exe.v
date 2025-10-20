@@ -5,16 +5,24 @@
 //   > 作者  : LOONGSON
 //   > 日期  : 2016-04-14
 //*************************************************************************
+
 module exe(                         // 执行级
     input              EXE_valid,   // 执行级有效信号
-    input      [ID_EXE_BUS_WIDTH - 1:0] ID_EXE_bus_r,// ID->EXE总线
+    input      [166:0] ID_EXE_bus_r,// ID->EXE总线
     output             EXE_over,    // EXE模块执行完成
-    output     [EXE_MEM_BUS_WIDTH - 1:0] EXE_MEM_bus, // EXE->MEM总线
+    output     [153:0] EXE_MEM_bus, // EXE->MEM总线
     
      //5级流水新增
     input             clk,       // 时钟
     output     [  4:0] EXE_wdest,   // EXE级要写回寄存器堆的目标地址号
  
+    // 新增旁路数据输出
+    output     [ 31:0] EXE_result,   // EXE级结果，用于旁路
+    
+    // EXE级指令类型信息输出
+    output             EXE_inst_load,  // EXE级Load指令
+    output             EXE_inst_mult,  // EXE级乘法指令
+
     //展示PC
     output     [ 31:0] EXE_pc
 );
@@ -62,6 +70,13 @@ module exe(                         // 执行级
             rf_wen,
             rf_wdest,
             pc          } = ID_EXE_bus_r;
+            
+    // 检测EXE级指令类型
+    wire inst_load, inst_store, ls_word, lb_sign;
+    assign {inst_load, inst_store, ls_word, lb_sign} = mem_control;
+    
+    assign EXE_inst_load = inst_load;
+    assign EXE_inst_mult = multiply;
 //-----{ID->EXE总线}end
 
 //-----{ALU}begin
@@ -115,6 +130,8 @@ module exe(                         // 执行级
     assign lo_result  = mtlo ? alu_operand1 : product[31:0];
     assign hi_write   = multiply | mthi;
     assign lo_write   = multiply | mtlo;
+
+    assign EXE_result = exe_result;  // ! 旁路输出
     
     assign EXE_MEM_bus = {mem_control,store_data,          //load/store信息和store数据
                           exe_result,                      //exe运算结果

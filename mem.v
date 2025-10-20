@@ -5,20 +5,31 @@
 //   > 作者  : LOONGSON
 //   > 日期  : 2016-04-14
 //*************************************************************************
+`define IF_ID_BUS_WIDTH     64
+`define ID_EXE_BUS_WIDTH    167
+`define EXE_MEM_BUS_WIDTH   154
+`define MEM_WB_BUS_WIDTH    118
+`define JBR_BUS_WIDTH       33
+`define EXC_BUS_WIDTH       33
+
+
 module mem(                          // 访存级
     input              clk,          // 时钟
     input              MEM_valid,    // 访存级有效信号
-    input      [EXE_MEM_BUS_WIDTH - 1:0] EXE_MEM_bus_r,// EXE->MEM总线
+    input      [153:0] EXE_MEM_bus_r,// EXE->MEM总线
     input      [ 31:0] dm_rdata,     // 访存读数据
     output     [ 31:0] dm_addr,      // 访存读写地址
     output reg [  3:0] dm_wen,       // 访存写使能
     output reg [ 31:0] dm_wdata,     // 访存写数据
     output             MEM_over,     // MEM模块执行完成
-    output     [MEM_WB_BUS_WIDTH - 1:0] MEM_WB_bus,   // MEM->WB总线
+    output     [117:0] MEM_WB_bus,   // MEM->WB总线
     
     //5级流水新增接口
     input              MEM_allow_in, // MEM级允许下级进入
     output     [  4:0] MEM_wdest,    // MEM级要写回寄存器堆的目标地址号
+
+    // 新增旁路数据输出
+    output     [ 31:0] MEM_result,   // MEM级结果，用于旁路
      
     //展示PC
     output     [ 31:0] MEM_pc
@@ -157,7 +168,9 @@ module mem(                          // 访存级
 //-----{MEM->WB总线}begin
     wire [31:0] mem_result; //MEM传到WB的result为load结果或EXE结果
     assign mem_result = inst_load ? load_result : exe_result;
-    
+
+    assign MEM_result = mem_result;  // ! 旁路输出
+
     assign MEM_WB_bus = {rf_wen,rf_wdest,                   // WB需要使用的信号
                          mem_result,                        // 最终要写回寄存器的数据
                          lo_result,                         // 乘法低32位结果，新增

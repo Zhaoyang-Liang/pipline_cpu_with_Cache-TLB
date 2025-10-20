@@ -6,6 +6,15 @@
 //   > 作者  : LOONGSON
 //   > 日期  : 2016-04-14
 //*************************************************************************
+
+`define IF_ID_BUS_WIDTH     64
+`define ID_EXE_BUS_WIDTH    167
+`define EXE_MEM_BUS_WIDTH   154
+`define MEM_WB_BUS_WIDTH    118
+`define JBR_BUS_WIDTH       33
+`define EXC_BUS_WIDTH       33
+
+
 module pipeline_cpu(  // 多周期cpu
     input clk,           // 时钟
     input resetn,        // 复位信号，低电平有效
@@ -128,16 +137,16 @@ module pipeline_cpu(  // 多周期cpu
 //-------------------------{5级流水控制信号}end--------------------------//
 
 //--------------------------{5级间的总线}begin---------------------------//
-    wire [ IF_ID_BUS_WIDTH - 1:0] IF_ID_bus;   // IF->ID级总线
-    wire [ID_EXE_BUS_WIDTH - 1:0] ID_EXE_bus;  // ID->EXE级总线
-    wire [EXE_MEM_BUS_WIDTH - 1:0] EXE_MEM_bus; // EXE->MEM级总线
-    wire [MEM_WB_BUS_WIDTH - 1:0] MEM_WB_bus;  // MEM->WB级总线
+    wire [ 63:0] IF_ID_bus;   // IF->ID级总线
+    wire [166:0] ID_EXE_bus;  // ID->EXE级总线
+    wire [153:0] EXE_MEM_bus; // EXE->MEM级总线
+    wire [117:0] MEM_WB_bus;  // MEM->WB级总线
     
     //锁存以上总线信号
-    reg [IF_ID_BUS_WIDTH - 1:0] IF_ID_bus_r;
-    reg [ID_EXE_BUS_WIDTH - 1:0] ID_EXE_bus_r;
-    reg [EXE_MEM_BUS_WIDTH - 1:0] EXE_MEM_bus_r;
-    reg [MEM_WB_BUS_WIDTH - 1:0] MEM_WB_bus_r;
+    reg [ 63:0] IF_ID_bus_r;
+    reg [166:0] ID_EXE_bus_r;
+    reg [153:0] EXE_MEM_bus_r;
+    reg [117:0] MEM_WB_bus_r;
     
     //IF到ID的锁存信号
     always @(posedge clk)
@@ -173,9 +182,27 @@ module pipeline_cpu(  // 多周期cpu
     end
 //---------------------------{5级间的总线}end----------------------------//
 
+//------------------------{旁路相关信号}begin---------------------------//
+
+    // 旁路数据信号
+    wire [31:0] EXE_result;    // EXE级结果
+    wire [31:0] MEM_result;    // MEM级结果  
+    wire [31:0] WB_result;     // WB级结果
+    
+    // 旁路控制信号
+    wire [4:0] EXE_wdest;      // EXE级写回目标寄存器
+    wire [4:0] MEM_wdest;      // MEM级写回目标寄存器
+    wire [4:0] WB_wdest;       // WB级写回目标寄存器
+    
+    // EXE级指令类型信息
+    wire EXE_inst_load;        // EXE级Load指令
+    wire EXE_inst_mult;        // EXE级乘法指令
+    
+//------------------------{旁路相关信号}end----------------------------//
+
 //--------------------------{其他交互信号}begin--------------------------//
     //跳转总线
-    wire [JBR_BUS_WIDTH - 1:0] jbr_bus;    
+    wire [ 32:0] jbr_bus;    
 
     //IF与inst_rom交互
     wire [31:0] inst_addr;
@@ -204,7 +231,7 @@ module pipeline_cpu(  // 多周期cpu
     wire [31:0] rf_wdata;    
     
     //WB与IF间的交互信号
-    wire [EXC_BUS_WIDTH - 1:0] exc_bus;
+    wire [ 32:0] exc_bus;
 //---------------------------{其他交互信号}end---------------------------//
 
 //-------------------------{各模块实例化}begin---------------------------//
@@ -247,6 +274,19 @@ module pipeline_cpu(  // 多周期cpu
         .EXE_wdest   (EXE_wdest   ),// I, 5
         .MEM_wdest   (MEM_wdest   ),// I, 5
         .WB_wdest    (WB_wdest    ),// I, 5
+
+        // 旁路：
+        .EXE_result(EXE_result),  // I, 32
+        .MEM_result(MEM_result),  // I, 32
+        .WB_result(WB_result),    // I, 32
+
+        .EXE_valid(EXE_valid),    // I, 1
+        .MEM_valid(MEM_valid),    // I, 1
+        .WB_valid(WB_valid),      // I, 1
+        
+        // EXE级指令类型信息
+        .EXE_inst_load(EXE_inst_load),  // I, 1
+        .EXE_inst_mult(EXE_inst_mult),  // I, 1
         
         //展示PC
         .ID_pc       (ID_pc       ) // O, 32
@@ -261,6 +301,13 @@ module pipeline_cpu(  // 多周期cpu
         //5级流水新增
         .clk         (clk         ),  // I, 1
         .EXE_wdest   (EXE_wdest   ),  // O, 5
+
+        // 旁路结果输出：
+        .EXE_result(EXE_result),  // O, 32
+        
+        // EXE级指令类型信息输出
+        .EXE_inst_load(EXE_inst_load),  // O, 1
+        .EXE_inst_mult(EXE_inst_mult),  // O, 1
         
         //展示PC
         .EXE_pc      (EXE_pc      )   // O, 32
@@ -280,6 +327,9 @@ module pipeline_cpu(  // 多周期cpu
         //5级流水新增接口
         .MEM_allow_in (MEM_allow_in ),  // I, 1
         .MEM_wdest    (MEM_wdest    ),  // O, 5
+
+        // 新增旁路数据输出
+        .MEM_result(MEM_result),  // O, 32
         
         //展示PC
         .MEM_pc       (MEM_pc       )   // O, 32
@@ -299,6 +349,9 @@ module pipeline_cpu(  // 多周期cpu
         .exc_bus     (exc_bus     ),  // O, 32
         .WB_wdest    (WB_wdest    ),  // O, 5
         .cancel      (cancel      ),  // O, 1
+        
+        // 新增旁路数据输出
+        .WB_result(WB_result),  // O, 32
         
         //展示PC和HI/LO值
         .WB_pc       (WB_pc       ),  // O, 32
