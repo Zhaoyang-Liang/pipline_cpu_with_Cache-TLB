@@ -15,7 +15,7 @@ module decode(                      // 译码级
     output     [ 32:0] jbr_bus,     // 跳转总线
 //  output             inst_jbr,    // 指令为跳转分支指令,五级流水不需要
     output             ID_over,     // ID模块执行完成
-    output     [166:0] ID_EXE_bus,  // ID->EXE总线
+    output     [ID_EXE_BUS_WIDTH - 1:0] ID_EXE_bus,  // ID->EXE总线
     
     //5级流水新增
      input              IF_over,     //对于分支指令，需要该信号

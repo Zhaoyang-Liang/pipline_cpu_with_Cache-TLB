@@ -7,9 +7,9 @@
 //*************************************************************************
 module exe(                         // 执行级
     input              EXE_valid,   // 执行级有效信号
-    input      [166:0] ID_EXE_bus_r,// ID->EXE总线
+    input      [ID_EXE_BUS_WIDTH - 1:0] ID_EXE_bus_r,// ID->EXE总线
     output             EXE_over,    // EXE模块执行完成
-    output     [153:0] EXE_MEM_bus, // EXE->MEM总线
+    output     [EXE_MEM_BUS_WIDTH - 1:0] EXE_MEM_bus, // EXE->MEM总线
     
      //5级流水新增
     input             clk,       // 时钟

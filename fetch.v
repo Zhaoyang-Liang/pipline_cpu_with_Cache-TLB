@@ -12,13 +12,13 @@ module fetch(                    // 取指级
     input             IF_valid,  // 取指级有效信号
     input             next_fetch,// 取下一条指令，用来锁存PC值
     input      [31:0] inst,      // inst_rom取出的指令
-    input      [32:0] jbr_bus,   // 跳转总线
+    input      [JBR_BUS_WIDTH - 1:0] jbr_bus,   // 跳转总线
     output     [31:0] inst_addr, // 发往inst_rom的取指地址
     output reg        IF_over,   // IF模块执行完成
-    output     [63:0] IF_ID_bus, // IF->ID总线
+    output     [IF_ID_BUS_WIDTH - 1:0] IF_ID_bus, // IF->ID总线
     
     //5级流水新增接口
-    input      [32:0] exc_bus,   // Exception pc总线
+    input      [EXC_BUS_WIDTH - 1:0] exc_bus,   // Exception pc总线
         
     //展示PC和取出的指令
     output     [31:0] IF_pc,

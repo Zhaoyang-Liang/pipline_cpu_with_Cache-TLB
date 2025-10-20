@@ -128,16 +128,16 @@ module pipeline_cpu(  // 多周期cpu
 //-------------------------{5级流水控制信号}end--------------------------//
 
 //--------------------------{5级间的总线}begin---------------------------//
-    wire [ 63:0] IF_ID_bus;   // IF->ID级总线
-    wire [166:0] ID_EXE_bus;  // ID->EXE级总线
-    wire [153:0] EXE_MEM_bus; // EXE->MEM级总线
-    wire [117:0] MEM_WB_bus;  // MEM->WB级总线
+    wire [ IF_ID_BUS_WIDTH - 1:0] IF_ID_bus;   // IF->ID级总线
+    wire [ID_EXE_BUS_WIDTH - 1:0] ID_EXE_bus;  // ID->EXE级总线
+    wire [EXE_MEM_BUS_WIDTH - 1:0] EXE_MEM_bus; // EXE->MEM级总线
+    wire [MEM_WB_BUS_WIDTH - 1:0] MEM_WB_bus;  // MEM->WB级总线
     
     //锁存以上总线信号
-    reg [ 63:0] IF_ID_bus_r;
-    reg [166:0] ID_EXE_bus_r;
-    reg [153:0] EXE_MEM_bus_r;
-    reg [117:0] MEM_WB_bus_r;
+    reg [IF_ID_BUS_WIDTH - 1:0] IF_ID_bus_r;
+    reg [ID_EXE_BUS_WIDTH - 1:0] ID_EXE_bus_r;
+    reg [EXE_MEM_BUS_WIDTH - 1:0] EXE_MEM_bus_r;
+    reg [MEM_WB_BUS_WIDTH - 1:0] MEM_WB_bus_r;
     
     //IF到ID的锁存信号
     always @(posedge clk)
@@ -175,7 +175,7 @@ module pipeline_cpu(  // 多周期cpu
 
 //--------------------------{其他交互信号}begin--------------------------//
     //跳转总线
-    wire [ 32:0] jbr_bus;    
+    wire [JBR_BUS_WIDTH - 1:0] jbr_bus;    
 
     //IF与inst_rom交互
     wire [31:0] inst_addr;
@@ -204,7 +204,7 @@ module pipeline_cpu(  // 多周期cpu
     wire [31:0] rf_wdata;    
     
     //WB与IF间的交互信号
-    wire [32:0] exc_bus;
+    wire [EXC_BUS_WIDTH - 1:0] exc_bus;
 //---------------------------{其他交互信号}end---------------------------//
 
 //-------------------------{各模块实例化}begin---------------------------//
