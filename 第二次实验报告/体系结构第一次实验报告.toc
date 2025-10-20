@@ -1,0 +1,15 @@
+\babel@toc {UKenglish}{}\relax 
+\contentsline {section}{\numberline {1}实验要求}{2}{section.1}%
+\contentsline {section}{\numberline {2}旁路设计图}{2}{section.2}%
+\contentsline {section}{\numberline {3}实验过程}{3}{section.3}%
+\contentsline {subsection}{\numberline {3.1}设计思路（我的考虑与尝试）}{3}{subsection.3.1}%
+\contentsline {subsubsection}{\numberline {3.1.1}前递阶段选取与转移计算未完成情况}{3}{subsubsection.3.1.1}%
+\contentsline {subsubsection}{\numberline {3.1.2}具体判断逻辑}{4}{subsubsection.3.1.2}%
+\contentsline {subsection}{\numberline {3.2}实现代码}{5}{subsection.3.2}%
+\contentsline {subsubsection}{\numberline {3.2.1}旁路单元详细实现}{5}{subsubsection.3.2.1}%
+\contentsline {subsubsection}{\numberline {3.2.2}总线传递与模块接口变化}{7}{subsubsection.3.2.2}%
+\contentsline {subsection}{\numberline {3.3}仿真实验}{8}{subsection.3.3}%
+\contentsline {subsubsection}{\numberline {3.3.1}周期变短验证}{8}{subsubsection.3.3.1}%
+\contentsline {subsubsection}{\numberline {3.3.2}延迟情况验证}{9}{subsubsection.3.3.2}%
+\contentsline {subsubsection}{\numberline {3.3.3}最后举例}{10}{subsubsection.3.3.3}%
+\contentsline {section}{\numberline {4}实验总结与心得体会}{11}{section.4}%

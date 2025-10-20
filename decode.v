@@ -323,10 +323,6 @@ module decode(                      // 译码级
     // assign rt_wait = ~inst_no_rt & (rt!=5'd0)
     //                & ( (rt==EXE_wdest) | (rt==MEM_wdest) | (rt==WB_wdest) );
     
-    //对于分支跳转指令，只有在IF执行完成后，才可以算ID完成；
-    //否则，ID级先完成了，而IF还在取指令，则next_pc不能锁存到PC里去，
-    //那么等IF完成，next_pc能锁存到PC里去时，jbr_bus上的数据已变成无效，
-    //导致分支跳转失败
     //(~inst_jbr | IF_over)即是(~inst_jbr | (inst_jbr & IF_over))
     assign ID_over = ID_valid & (~inst_jbr | IF_over) & ~stall_required;
 //-----{ID执行完成}end
