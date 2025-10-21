@@ -67,3 +67,33 @@ set_property IOSTANDARD LVCMOS33 [get_ports ct_scl]
 set_property IOSTANDARD LVCMOS33 [get_ports ct_rstn]
 
 set_property IOSTANDARD LVCMOS33 [get_ports btn_clk]
+
+# 时钟约束
+# 主时钟约束 - 假设主时钟频率为100MHz
+create_clock -period 20.000 -name clk [get_ports clk]
+
+# 按钮时钟约束 - 假设按钮时钟频率为1MHz（用于单步执行）
+create_clock -period 1000.000 -name btn_clk [get_ports btn_clk]
+
+# 时钟域约束
+set_clock_groups -asynchronous -group [get_clocks clk] -group [get_clocks btn_clk]
+
+# 输入延迟约束（相对于主时钟）
+set_input_delay -clock [get_clocks clk] -max 2.0 [get_ports resetn]
+set_input_delay -clock [get_clocks clk] -min 0.5 [get_ports resetn]
+
+# 输出延迟约束（相对于主时钟）
+set_output_delay -clock [get_clocks clk] -max 2.0 [get_ports {lcd_data_io[*]}]
+set_output_delay -clock [get_clocks clk] -min 0.5 [get_ports {lcd_data_io[*]}]
+set_output_delay -clock [get_clocks clk] -max 2.0 [get_ports lcd_rst]
+set_output_delay -clock [get_clocks clk] -min 0.5 [get_ports lcd_rst]
+set_output_delay -clock [get_clocks clk] -max 2.0 [get_ports lcd_cs]
+set_output_delay -clock [get_clocks clk] -min 0.5 [get_ports lcd_cs]
+set_output_delay -clock [get_clocks clk] -max 2.0 [get_ports lcd_rs]
+set_output_delay -clock [get_clocks clk] -min 0.5 [get_ports lcd_rs]
+set_output_delay -clock [get_clocks clk] -max 2.0 [get_ports lcd_wr]
+set_output_delay -clock [get_clocks clk] -min 0.5 [get_ports lcd_wr]
+set_output_delay -clock [get_clocks clk] -max 2.0 [get_ports lcd_rd]
+set_output_delay -clock [get_clocks clk] -min 0.5 [get_ports lcd_rd]
+set_output_delay -clock [get_clocks clk] -max 2.0 [get_ports lcd_bl_ctr]
+set_output_delay -clock [get_clocks clk] -min 0.5 [get_ports lcd_bl_ctr]
