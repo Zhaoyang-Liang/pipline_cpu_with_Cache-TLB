@@ -34,6 +34,11 @@
 
 \textbf{仿真对比效果：}从三个方面对比了仿真效果：整体直观上总周期变短；branch与乘法延迟情况，最后从细节举例确实减少了周期的指令。
 
+\textbf{实现性能验证：} 添加时钟约束，查看添加旁路后的CPU 的timing与能耗等信息，发现性能等均正常，直接说明上箱性能也有保障。
+
+\noindent \textbf{关键词：} 旁路 ； 仿真对比 ； 代码实现 ； 性能验证
+
+
 \newpage
 
 \section{实验要求}
@@ -127,50 +132,13 @@ assign rs_bypass_source = exe_bypass_rs ? 2'b01 :
 
 \subsubsection{旁路单元详细实现}
 
-\begin{lstlisting}[language=Verilog,caption={模块}]
-    module bypass_unit(
-        // 当前指令信息
-        input [4:0] rs,                    // 源寄存器1地址
-        input [4:0] rt,                    // 源寄存器2地址
-        input [31:0] rs_value,             // 源寄存器1原始值
-        input [31:0] rt_value,             // 源寄存器2原始值
-        
-        // 后续流水级信息
-        input EXE_valid,                   // EXE级有效
-        input MEM_valid,                   // MEM级有效
-        input WB_valid,                    // WB级有效
-        input [4:0] EXE_wdest,             // EXE级写回目标寄存器
-        input [4:0] MEM_wdest,             // MEM级写回目标寄存器
-        input [4:0] WB_wdest,              // WB级写回目标寄存器
-        input [31:0] EXE_result,           // EXE级结果
-        input [31:0] MEM_result,           // MEM级结果
-        input [31:0] WB_result,            // WB级结果
-        
-        // 指令类型信息（用于特殊处理）
-        input inst_load,                   // 当前指令Load指令
-        input inst_mult,                   // 当前指令乘法指令
-        input inst_mfhi,                   // 当前指令MFHI指令
-        input inst_mflo,                   // 当前指令MFLO指令
-        input inst_mfc0,                   // 当前指令MFC0指令
-        
-        // EXE级指令类型信息（用于Load-Use相关检测）
-        input EXE_inst_load,               // EXE级Load指令
-        input EXE_inst_mult,               // EXE级乘法指令
-        
-        // 旁路结果输出
-        output [31:0] bypassed_rs_value,   // 旁路后的rs值
-        output [31:0] bypassed_rt_value,   // 旁路后的rt值
-        
-        // 控制信号输出
-        output stall_required,             // 需要阻塞信号
-        output rs_bypass_valid,            // rs旁路有效
-        output rt_bypass_valid,            // rt旁路有效
-        output [1:0] rs_bypass_source,     // rs旁路源 (00:无, 01:EXE, 10:MEM, 11:WB)
-        output [1:0] rt_bypass_source      // rt旁路源 (00:无, 01:EXE, 10:MEM, 11:WB)
-    );    
-\end{lstlisting}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\linewidth]{img/上箱/bypass_unit.jpg}
+    \caption{bypass\_unit模块}
+\end{figure}
 
-虽然这个比较占地方，但是由于本次实验主要就是这个代码，因此依然还是把声明（所有接口）原封不动给出了。主要的特殊信息就是load和乘法累指令，还有协处理器指令:inst\_mfc0。 
+这里可以看到最中实现的旁路单元的输入输出，可以主要关注bypass\_rs\_value和bypass\_rt\_value与stall\_required。主要的特殊信息就是load和乘法累指令，还有协处理器指令:inst\_mfc0。 
 
 
 \begin{lstlisting}[language=Verilog,caption={阻塞控制信号-产生}]
@@ -249,6 +217,22 @@ input              EXE_inst_mult,  // EXE级乘法指令
     \includegraphics[width=0.8\linewidth]{img/旁路修改图片/alu用旁路的值.png}
     \caption{alu采用旁路值}
 \end{figure}
+
+\subsubsection{Implement性能验证}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\linewidth]{img/上箱/最长延迟.jpg}
+    \caption{最长延迟}
+\end{figure}
+
+最初添加时钟约束的时候，采用了10ns的延迟，发现时间余量是负数，因此改成了20ns一个周期，这里可以看到修改正确后，时间最长的是Icd\_module/lcd\_data\_reg，这个接口，也就是液晶显示屏的数据输入接口，而且主要的时间延迟来自于NetDelay，为7ns，逻辑延迟普遍在3ns左右，因此整体上性能是正常的，只是布线可能需要优化一下。
+
+
+
+
+
+
 
 \newpage
 

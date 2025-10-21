@@ -1,4 +1,4 @@
-This is XeTeX, Version 3.141592653-2.6-0.999997 (TeX Live 2025) (preloaded format=xelatex 2025.4.15)  20 OCT 2025 17:45
+This is XeTeX, Version 3.141592653-2.6-0.999997 (TeX Live 2025) (preloaded format=xelatex 2025.4.15)  21 OCT 2025 12:51
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -1776,7 +1776,7 @@ Package fontspec Info:
 File: img/旁路修改图片/旁路设计图.png Graphic file (type bmp)
 <img/旁路修改图片/旁路设计图.png>
 
-Overfull \hbox (22.25963pt too wide) in paragraph at lines 52--54
+Overfull \hbox (22.25963pt too wide) in paragraph at lines 57--59
 []|  [] 
  []
 
@@ -1801,7 +1801,7 @@ File: lstlang2.sty 2024/09/23 1.10c listings language file
 File: lstlang3.sty 2024/09/23 1.10c listings language file
 )
 Package hyperref Info: bookmark level for unknown lstlisting defaults to 0 on i
-nput line 100.
+nput line 105.
 
 Package fontspec Info: 
 (fontspec)             Script 'CJK' not explicitly supported within font
@@ -1842,12 +1842,24 @@ Package fontspec Info:
 
 
 [4]
+File: img/上箱/bypass_unit.jpg Graphic file (type bmp)
+<img/上箱/bypass_unit.jpg>
+
+Overfull \hbox (19.26988pt too wide) in paragraph at lines 141--142
+[]\TU/STSong(0)/m/n/10.53937 这 里 可 以 看 到 最 中 实 现 的 旁 路 单 元 的 输 入 输 出，|  可 以 主 要
+ 关 注 \TU/lmr/m/n/10.53937 bypass_rs_value \TU/STSong(0)/m/n/10.53937 和 \TU/lmr/
+m/n/10.53937 bypass_rt_value
+ []
+
+
 
 [5]
 
 [6]
 File: img/旁路修改图片/alu用旁路的值.png Graphic file (type bmp)
 <img/旁路修改图片/alu用旁路的值.png>
+File: img/上箱/最长延迟.jpg Graphic file (type bmp)
+<img/上箱/最长延迟.jpg>
 
 
 [7]
@@ -1879,7 +1891,7 @@ File: img/顺序图片/5458.png Graphic file (type bmp)
 
 [11] 
 enddocument/afterlastpage (AED): lastpage setting LastPage.
-runsystem(latexminted cleantemp  --timestamp 20251020174502 7FEBD4987202B2D7558
+runsystem(latexminted cleantemp  --timestamp 20251021125107 7FEBD4987202B2D7558
 C2597FAFE63E4)...executed safely (allowed).
 
 (./体系结构第一次实验报告.aux)
@@ -1892,15 +1904,15 @@ L3 programming layer <2022/07/14>
 LaTeX Warning: There were multiply-defined labels.
 
 Package rerunfilecheck Info: File `体系结构第一次实验报告.out' has not changed.
-(rerunfilecheck)             Checksum: D4B0059D678B6D60D378A287922C935F;1617.
+(rerunfilecheck)             Checksum: C063C49D6589DFFEA647F985F1D4A576;1762.
  ) 
 Here is how much of TeX's memory you used:
- 50749 strings out of 473832
- 1216897 string characters out of 5729481
- 2190509 words of memory out of 5000000
- 72895 multiletter control sequences out of 15000+600000
+ 50742 strings out of 473832
+ 1216906 string characters out of 5729481
+ 2184509 words of memory out of 5000000
+ 72884 multiletter control sequences out of 15000+600000
  575557 words of font info for 114 fonts, out of 8000000 for 9000
  1348 hyphenation exceptions out of 8191
- 113i,12n,120p,1008b,1928s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 113i,12n,120p,1008b,1924s stack positions out of 10000i,1000n,20000p,200000b,200000s
 
 Output written on 体系结构第一次实验报告.pdf (11 pages).
