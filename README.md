@@ -3,6 +3,8 @@
 # 如果你分享了这个报告或者链接请让他也帮忙点个star
 # 持续更新
 
+# 一定不要抄袭啊
+
 ## pipline cpu FPGA
 ### bypass 
 ### interrupt
