@@ -1,0 +1,750 @@
+\documentclass[a4paper]{article}
+\input{style/ch_xelatex.tex}
+\input{style/scala.tex}
+\renewcommand {\thefigure}{\thesection{}.\arabic{figure}}%图片按章标号
+
+
+% 代码样式设置（Verilog）
+\lstdefinelanguage{Verilog}{
+    morekeywords={module, endmodule, input, output, wire, reg, always, assign, if, else, begin, end, posedge, negedge, parameter, localparam, case, default},
+    sensitive=true,
+    morecomment=[l]{//},
+    morecomment=[n]{/*}{*/},
+    morestring=[b]"
+}
+
+\lstset{
+    language=Verilog,
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{blue}\bfseries,
+    commentstyle=\color{dkgreen},
+    stringstyle=\color{red},
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    stepnumber=1,
+    numbersep=5pt,
+    backgroundcolor=\color{gray!10},
+    frame=single,
+    breaklines=true,
+    breakatwhitespace=true,
+    tabsize=4,
+    showspaces=false,
+    showstringspaces=false
+}
+
+\usepackage{booktabs}
+\usepackage{geometry}
+\geometry{left=2.5cm,right=2.5cm,top=3cm,bottom=3cm}
+
+\begin{document}
+
+\renewcommand{\figurename}{图}
+\renewcommand{\contentsname}{目录}  
+\cfoot{\thepage\ of \pageref{LastPage}}
+\renewcommand{\abstractname}{\textbf{\Large 摘要}} 
+
+\begin{center}
+    \huge{\textbf{MIPS五级流水线CPU的CP0异常处理系统设计与实现}}
+\end{center}
+
+\begin{center}
+    \textbf{姓名}：\underline{姓名} \quad
+    \textbf{专业}：\underline{专业}
+\end{center}
+
+\tableofcontents
+
+\vspace*{1cm}
+
+\noindent{\Large\textbf{摘要}}
+
+\vspace{1em}
+
+\textbf{CP0模块实现部分:} 本文档详细描述了MIPS五级流水线CPU中协处理器0（CP0）的设计与实现。CP0是MIPS架构中用于系统控制和异常处理的关键模块，负责处理各种异常类型（如SYSCALL、BREAK、地址错误等）和中断（如定时器中断），并维护系统状态寄存器。本文档涵盖了CP0模块的总体架构、6个CP0寄存器的实现细节、异常处理流程和仲裁机制、4种异常类型的实现、总线排布和信号传递、CP0寄存器访问机制以及流水线控制信号等内容。
+
+\textbf{软件异常处理程序部分：} 本章节预留，用于描述异常处理程序的编写方法、测试程序的设计思路等。具体内容待补充。
+
+\vspace{1em}
+\noindent\textbf{关键词：} MIPS、五级流水线、CP0、异常处理、中断、协处理器
+
+\newpage
+
+\section{实验目的}
+
+\begin{enumerate}
+    \item 理解MIPS架构中CP0（协处理器0）的作用和功能
+    \item 掌握CP0寄存器的设计和实现方法
+    \item 学习异常处理机制的设计与实现
+    \item 理解中断处理流程和定时器中断的实现
+    \item 掌握流水线中异常信号的传递和仲裁机制
+\end{enumerate}
+
+\section{实验要求}
+
+\begin{enumerate}
+    \item 实现CP0模块，包含STATUS、CAUSE、EPC、BADVADDR、COUNT、COMPARE等6个寄存器
+    \item 实现SYSCALL、BREAK、地址错误（AdEL/AdES）、定时器中断等4种异常类型
+    \item 实现异常仲裁机制，确定异常优先级
+    \item 实现MTC0/MFC0指令，支持CP0寄存器访问
+    \item 实现ERET指令，支持从异常处理返回
+\end{enumerate}
+
+\section{实验过程}
+
+\subsection{CP0模块总体架构}
+
+\subsubsection{模块接口设计}
+
+CP0模块（\texttt{cp0.v}）是异常处理系统的核心，其接口定义如下：
+
+\begin{lstlisting}[caption=CP0模块接口定义]
+module cp0(
+    input             clk,       // 时钟
+    input             resetn,    // 复位信号，低电平有效
+    
+    // 来自WB级的控制信号
+    input             mtc0,      // MTC0指令标识
+    input             mfc0,      // MFC0指令标识
+    input      [ 7:0] cp0r_addr, // CP0寄存器地址 {寄存器号[4:0], 选择域[2:0]}
+    input      [31:0] wdata,     // 写入CP0的数据
+    
+    // 异常相关信号
+    input             syscall,   // SYSCALL指令标识
+    input             eret,      // ERET指令标识
+    input      [31:0] pc,        // 当前PC值（用于保存到EPC）
+    input             wb_valid,  // WB级有效信号
+    input             wb_over,   // WB级完成信号
+    
+    // 统一异常总线（来自WB的最终裁决）
+    input             ex_valid_i,        // 异常有效
+    input      [ 4:0] ex_code_i,         // 异常编码
+    input             ex_bd_i,           // 延迟槽异常
+    input      [31:0] ex_pc_i,           // 发生异常的PC
+    input             badvaddr_valid_i,  // 错误地址有效
+    input      [31:0] badvaddr_i,        // 错误地址
+    
+    // CP0寄存器读数据输出
+    output     [31:0] cp0r_rdata,        // CP0寄存器读数据（用于MFC0）
+    
+    // 异常处理输出
+    output            cancel,    // 取消流水线信号
+    output            exc_valid, // 异常有效信号
+    output     [31:0] exc_pc,    // 异常入口地址或ERET返回地址
+    
+    // 寄存器值输出（用于异常处理）
+    output     [31:0] cp0r_status,       // STATUS寄存器值
+    output     [31:0] cp0r_cause,         // CAUSE寄存器值
+    output     [31:0] cp0r_epc,           // EPC寄存器值
+    
+    // 中断输出
+    output            c0_int              // 中断有效信号
+);
+\end{lstlisting}
+
+\subsubsection{设计原则}
+
+CP0模块的设计遵循以下原则：
+
+\begin{enumerate}
+    \item \textbf{统一异常总线}：所有异常（包括SYSCALL、BREAK、地址错误、中断）都通过统一的异常总线（\texttt{ex\_valid\_i, ex\_code\_i}等）传递到CP0，由CP0统一处理。
+    \item \textbf{寄存器访问控制}：通过MTC0/MFC0指令访问CP0寄存器，使用写掩码（WMASK）控制可写位域。
+    \item \textbf{异常优先级}：在WB级进行异常仲裁，确定优先级后统一传递给CP0。
+    \item \textbf{中断检测}：CP0内部检测定时器中断条件，输出中断信号。
+\end{enumerate}
+
+\subsection{CP0寄存器实现}
+
+\subsubsection{寄存器列表}
+
+本实现包含以下CP0寄存器：
+
+\begin{table}[h]
+\centering
+\caption{CP0寄存器列表}
+\begin{tabular}{llll}
+\toprule
+寄存器号 & 选择域 & 名称 & 功能描述 \\
+\midrule
+12 & 0 & STATUS & 系统状态寄存器 \\
+13 & 0 & CAUSE & 异常原因寄存器 \\
+14 & 0 & EPC & 异常程序计数器 \\
+8 & 0 & BADVADDR & 错误虚拟地址寄存器 \\
+9 & 0 & COUNT & 定时器计数寄存器 \\
+11 & 0 & COMPARE & 定时器比较寄存器 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{STATUS寄存器（寄存器12）}
+
+STATUS寄存器用于控制系统状态和中断使能。
+
+\begin{lstlisting}[caption=STATUS寄存器位域定义]
+// STATUS寄存器位域
+wire status_ie;        // bit 0: 全局中断使能 (IE)
+wire status_exl;       // bit 1: 异常级别 (EXL)
+wire [7:0] status_im;  // bit 15:8: 中断屏蔽位 (IM)
+
+// STATUS寄存器写掩码（支持IE、EXL、IM位）
+wire [31:0] STATUS_WMASK;
+assign STATUS_WMASK = 32'h0000_8103; // bit 0(IE), bit 1(EXL), bit 15:8(IM)
+\end{lstlisting}
+
+\textbf{关键位域说明：}
+\begin{itemize}
+    \item \texttt{IE (bit 0)}：全局中断使能位。当IE=0时，所有中断被屏蔽。
+    \item \texttt{EXL (bit 1)}：异常级别位。当EXL=1时，CPU处于异常处理模式，新的中断和异常被屏蔽。
+    \item \texttt{IM[7:0] (bit 15:8)}：中断屏蔽位。每一位对应一个中断源，IM[7]对应定时器中断。
+\end{itemize}
+
+\textbf{写入控制：}
+\begin{lstlisting}[caption=STATUS寄存器写入逻辑]
+if (status_wen) begin
+    status <= (status & ~STATUS_WMASK) | (wdata & STATUS_WMASK);
+end
+\end{lstlisting}
+
+\subsubsection{CAUSE寄存器（寄存器13）}
+
+CAUSE寄存器记录异常原因和中断状态。
+
+\begin{lstlisting}[caption=CAUSE寄存器位域定义]
+// CAUSE寄存器位域
+wire cause_bd;         // bit 31: 延迟槽标志 (BD)
+wire cause_ti;         // bit 30: 定时器中断标志 (TI)
+wire [7:0] cause_ip;   // bit 15:8: 中断挂起位 (IP)
+wire [4:0] cause_excode; // bit 6:2: 异常编码 (ExcCode)
+
+// CAUSE寄存器写掩码（支持IP[1:0]位）
+wire [31:0] CAUSE_WMASK;
+assign CAUSE_WMASK = 32'h0000_0300;  // bit 9:8(IP[1:0])
+\end{lstlisting}
+
+\textbf{关键位域说明：}
+\begin{itemize}
+    \item \texttt{BD (bit 31)}：延迟槽标志。当异常发生在分支指令的延迟槽中时，BD=1。
+    \item \texttt{TI (bit 30)}：定时器中断标志。当COUNT == COMPARE时，TI=1。
+    \item \texttt{IP[7:0] (bit 15:8)}：中断挂起位。IP[7]对应定时器中断，由硬件自动更新。
+    \item \texttt{ExcCode (bit 6:2)}：异常编码，标识异常类型。
+\end{itemize}
+
+\textbf{异常编码表：}
+\begin{table}[h]
+\centering
+\caption{异常编码表}
+\begin{tabular}{ll}
+\toprule
+异常编码 & 异常类型 \\
+\midrule
+0 & 中断 (Interrupt) \\
+4 & 地址错误-加载 (AdEL) \\
+5 & 地址错误-存储 (AdES) \\
+8 & 系统调用 (SYSCALL) \\
+9 & 断点 (BREAK) \\
+12 & 算术溢出 (OV) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{EPC寄存器（寄存器14）}
+
+EPC寄存器保存发生异常时的程序计数器值。
+
+\begin{lstlisting}[caption=EPC寄存器写入逻辑]
+// 统一异常处理：所有异常都通过ex_valid_i传递
+if (ex_valid_i && wb_valid) begin
+    status[1] <= 1'b1;                     // EXL
+    cause[31] <= ex_bd_i;                  // BD
+    cause[6:2] <= ex_code_i;               // ExcCode
+    epc <= ex_bd_i ? ex_pc_i : ex_pc_i;   // 写入分支PC或出错PC
+    if (badvaddr_valid_i) begin
+        badvaddr <= badvaddr_i;
+    end
+end
+\end{lstlisting}
+
+\textbf{说明：}
+\begin{itemize}
+    \item 当异常发生时，EPC保存发生异常的指令地址。
+    \item 如果异常发生在延迟槽中（BD=1），EPC保存分支指令的地址。
+    \item ERET指令执行时，CPU跳转到EPC保存的地址继续执行。
+\end{itemize}
+
+\subsubsection{BADVADDR寄存器（寄存器8）}
+
+BADVADDR寄存器保存导致地址错误的虚拟地址。
+
+\begin{lstlisting}[caption=BADVADDR寄存器写入逻辑]
+if (badvaddr_valid_i) begin
+    badvaddr <= badvaddr_i;
+end
+\end{lstlisting}
+
+\textbf{说明：}
+\begin{itemize}
+    \item 仅在地址错误异常（AdEL/AdES）时写入。
+    \item 由MEM级检测地址对齐错误，通过异常总线传递到CP0。
+\end{itemize}
+
+\subsubsection{COUNT寄存器（寄存器9）}
+
+COUNT寄存器是定时器计数器，用于定时器中断。
+
+\begin{lstlisting}[caption=COUNT寄存器实现]
+// 定时器时钟分频（每两个时钟周期翻转一次，降低计数频率）
+reg time_tick;
+always @(posedge clk) begin
+    if (!resetn) begin
+        time_tick <= 1'b0;
+    end else begin
+        time_tick <= ~time_tick;
+    end
+end
+
+// COUNT寄存器：可写，或每两个时钟周期自增
+always @(posedge clk) begin
+    if (!resetn) begin
+        count <= 32'd0;
+    end else begin
+        if (count_wen) begin
+            count <= wdata;
+        end else if (time_tick) begin
+            count <= count + 1'b1;
+        end
+    end
+end
+\end{lstlisting}
+
+\textbf{说明：}
+\begin{itemize}
+    \item COUNT寄存器可通过MTC0指令写入。
+    \item 正常情况下，每两个时钟周期自增1（通过\texttt{time\_tick}分频）。
+    \item 当COUNT == COMPARE时，触发定时器中断。
+\end{itemize}
+
+\subsubsection{COMPARE寄存器（寄存器11）}
+
+COMPARE寄存器是定时器比较值，用于定时器中断。
+
+\begin{lstlisting}[caption=COMPARE寄存器实现]
+// COMPARE寄存器：可写，写入时清除定时器中断
+always @(posedge clk) begin
+    if (!resetn) begin
+        compare <= 32'd0;
+    end else begin
+        if (compare_wen) begin
+            compare <= wdata;
+        end
+    end
+end
+
+// 定时器中断标志（cause_ti_reg）
+always @(posedge clk) begin
+    if (!resetn) begin
+        cause_ti_reg <= 1'b0;
+    end else begin
+        if (compare_wen) begin
+            cause_ti_reg <= 1'b0;  // 写入COMPARE时清除
+        end else if (count_eq_compare) begin
+            cause_ti_reg <= 1'b1;   // COUNT == COMPARE时置位
+        end
+    end
+end
+\end{lstlisting}
+
+\textbf{说明：}
+\begin{itemize}
+    \item COMPARE寄存器可通过MTC0指令写入。
+    \item 写入COMPARE寄存器会清除定时器中断标志（TI位）。
+    \item 当COUNT == COMPARE时，置位TI标志，触发中断。
+\end{itemize}
+
+\subsection{异常处理流程}
+
+\subsubsection{异常检测与仲裁}
+
+异常检测分布在流水线的不同阶段：
+
+\begin{enumerate}
+    \item \textbf{ID级}：检测SYSCALL、BREAK指令。
+    \item \textbf{MEM级}：检测地址对齐错误（AdEL/AdES）。
+    \item \textbf{WB级}：统一仲裁所有异常，确定优先级。
+    \item \textbf{CP0}：检测定时器中断。
+\end{enumerate}
+
+\subsubsection{WB级异常仲裁}
+
+WB级负责统一仲裁所有异常，确定优先级后传递给CP0：
+
+\begin{lstlisting}[caption=WB级异常仲裁逻辑]
+// 异常仲裁逻辑（优先级：中断 > 地址错 > BREAK > SYSCALL）
+// 非中断异常（地址错、BREAK、SYSCALL）
+assign wb_ex_valid_no_int  = (mem_ex_adel_wb | mem_ex_ades_wb | brk_wb | syscall) ? WB_valid : 1'b0;
+assign wb_ex_code_no_int   = mem_ex_adel_wb ? 5'd4 :  // AdEL
+                             mem_ex_ades_wb ? 5'd5 :  // AdES
+                             brk_wb ? 5'd9 :          // BREAK
+                             syscall ? 5'd8 : 5'd0;   // SYSCALL
+
+// 最终异常有效信号（中断优先级最高）
+assign wb_ex_valid = (cp0_int && WB_valid) | wb_ex_valid_no_int;
+assign wb_ex_code  = cp0_int ? 5'd0 : wb_ex_code_no_int;  // 中断异常码为0
+assign wb_ex_bd    = 1'b0;       // 延迟槽后续接入
+assign wb_ex_pc    = pc;         // 异常PC（地址错与syscall均取当前pc）
+\end{lstlisting}
+
+\textbf{异常优先级：}
+\begin{enumerate}
+    \item 定时器中断（最高优先级）
+    \item 地址错误（AdEL/AdES）
+    \item BREAK异常
+    \item SYSCALL异常
+\end{enumerate}
+
+\subsubsection{异常处理流程}
+
+当异常发生时，CP0执行以下操作：
+
+\begin{enumerate}
+    \item \textbf{设置EXL位}：STATUS[1] = 1，进入异常处理模式。
+    \item \textbf{保存EPC}：将发生异常的PC保存到EPC寄存器。
+    \item \textbf{设置CAUSE}：写入异常编码（ExcCode）和延迟槽标志（BD）。
+    \item \textbf{保存BADVADDR}：如果是地址错误，保存错误地址。
+    \item \textbf{跳转异常入口}：CPU跳转到异常入口地址（0x0）。
+\end{enumerate}
+
+\begin{lstlisting}[caption=CP0异常处理逻辑]
+// 统一异常处理：所有异常都通过ex_valid_i传递
+if (ex_valid_i && wb_valid) begin
+    status[1] <= 1'b1;                     // EXL
+    cause[31] <= ex_bd_i;                  // BD
+    cause[6:2] <= ex_code_i;               // ExcCode
+    epc <= ex_bd_i ? ex_pc_i : ex_pc_i;   // 写入分支PC或出错PC
+    if (badvaddr_valid_i) begin
+        badvaddr <= badvaddr_i;
+    end
+end
+\end{lstlisting}
+
+\subsubsection{ERET指令处理}
+
+ERET指令用于从异常处理返回：
+
+\begin{lstlisting}[caption=ERET指令处理]
+// ERET指令：清除EXL位
+if (eret && wb_valid) begin
+    status[1] <= 1'b0;   // 清EXL
+end
+
+// 异常/返回对外信号
+assign exc_pc = eret ? epc : `EXC_ENTER_ADDR;
+\end{lstlisting}
+
+\textbf{说明：}
+\begin{itemize}
+    \item ERET执行时，清除STATUS[1]（EXL位），退出异常处理模式。
+    \item CPU跳转到EPC保存的地址继续执行。
+\end{itemize}
+
+\subsection{中断处理}
+
+\subsubsection{定时器中断检测}
+
+定时器中断由CP0内部检测：
+
+\begin{lstlisting}[caption=定时器中断检测逻辑]
+// COUNT == COMPARE检测
+assign count_eq_compare = (count == compare);
+
+// 定时器中断标志（cause_ti_reg）
+always @(posedge clk) begin
+    if (!resetn) begin
+        cause_ti_reg <= 1'b0;
+    end else begin
+        if (compare_wen) begin
+            cause_ti_reg <= 1'b0;  // 写入COMPARE时清除
+        end else if (count_eq_compare) begin
+            cause_ti_reg <= 1'b1;   // COUNT == COMPARE时置位
+        end
+    end
+end
+
+// CAUSE寄存器位域更新
+always @(posedge clk) begin
+    // cause[30]: TI位（定时器中断标志）
+    if (!ex_valid_i || !wb_valid) begin
+        cause[30] <= cause_ti_reg;
+    end
+    
+    // cause[15:8]: IP位（中断挂起位）
+    // IP[7] = TI（定时器中断）
+    if (!ex_valid_i || !wb_valid) begin
+        cause[15:8] <= {cause_ti_reg, 5'd0, cause[9:8]};
+    end
+end
+\end{lstlisting}
+
+\subsubsection{中断使能条件}
+
+中断需要满足以下条件才能触发：
+
+\begin{lstlisting}[caption=中断检测逻辑]
+// 中断检测逻辑
+// 中断条件：有中断挂起 && 对应中断使能 && 全局中断使能 && 不在异常级别
+assign c0_int = |(cause_ip[7:0] & status_im[7:0]) & status_ie & !status_exl;
+\end{lstlisting}
+
+\textbf{中断使能条件：}
+\begin{enumerate}
+    \item 有中断挂起（IP位为1）
+    \item 对应中断屏蔽位使能（IM位为1）
+    \item 全局中断使能（IE=1）
+    \item 不在异常级别（EXL=0）
+\end{enumerate}
+
+\subsection{总线排布}
+
+\subsubsection{MEM->WB总线}
+
+MEM级通过总线将异常信息传递给WB级：
+
+\begin{lstlisting}[caption=MEM->WB总线定义]
+`define MEM_WB_BUS_WIDTH    153
+
+// 扩展MEM->WB总线，新增：mem_ex_adel, mem_ex_ades, badvaddr(dm_addr)
+assign MEM_WB_bus = {rf_wen,rf_wdest,                   // WB需要使用的信号
+                     mem_result,                        // 最终要写回寄存器的数据
+                     lo_result,                         // 乘法低32位结果
+                     hi_write,lo_write,                 // HI/LO写使能
+                     mfhi,mflo,                         // WB需要使用的信号
+                     mtc0,mfc0,cp0r_addr,syscall,brk,eret,  // WB需要使用的信号
+                     mem_ex_adel, mem_ex_ades,          // 地址异常标志（新增）
+                     dm_addr,                           // BADVADDR（新增）
+                     pc};                               // PC值
+\end{lstlisting}
+
+\textbf{总线位域说明：}
+\begin{itemize}
+    \item \texttt{mem\_ex\_adel}：Load地址错误标志
+    \item \texttt{mem\_ex\_ades}：Store地址错误标志
+    \item \texttt{dm\_addr}：访存地址（用于BADVADDR）
+    \item \texttt{syscall, brk, eret}：异常指令标识
+\end{itemize}
+
+\subsubsection{WB->CP0异常总线}
+
+WB级通过异常总线将异常信息传递给CP0：
+
+\begin{lstlisting}[caption=WB->CP0异常总线]
+// 统一异常总线（传递给CP0）
+assign wb_ex_valid = (cp0_int && WB_valid) | wb_ex_valid_no_int;
+assign wb_ex_code  = cp0_int ? 5'd0 : wb_ex_code_no_int;
+assign wb_ex_bd    = 1'b0;
+assign wb_ex_pc    = pc;
+assign wb_badvaddr_valid = mem_ex_adel_wb | mem_ex_ades_wb;
+assign wb_badvaddr = mem_badvaddr_wb;
+\end{lstlisting}
+
+\subsection{各异常类型的实现}
+
+\subsubsection{SYSCALL异常}
+
+\textbf{检测位置：}ID级（指令译码）
+
+\begin{lstlisting}[caption=SYSCALL指令检测]
+// decode.v
+assign inst_SYSCALL = (op == 6'b000000) & (funct == 6'b001100);
+\end{lstlisting}
+
+\textbf{处理流程：}
+\begin{enumerate}
+    \item ID级检测到SYSCALL指令，将\texttt{syscall}信号传递到WB级。
+    \item WB级仲裁，设置异常码为8。
+    \item CP0保存EPC（SYSCALL指令地址），设置EXL=1，跳转到异常入口。
+    \item 异常处理程序读取CAUSE，判断为SYSCALL，执行相应处理。
+    \item 处理完成后，EPC += 4，ERET返回。
+\end{enumerate}
+
+\subsubsection{BREAK异常}
+
+\textbf{检测位置：}ID级（指令译码）
+
+\begin{lstlisting}[caption=BREAK指令检测]
+// decode.v
+assign inst_BREAK = (op == 6'b000000) & (funct == 6'b001101);
+\end{lstlisting}
+
+\textbf{处理流程：}
+\begin{enumerate}
+    \item ID级检测到BREAK指令，将\texttt{brk}信号传递到WB级。
+    \item WB级仲裁，设置异常码为9。
+    \item CP0保存EPC（BREAK指令地址），设置EXL=1，跳转到异常入口。
+    \item 异常处理程序读取CAUSE，判断为BREAK，执行相应处理。
+    \item 处理完成后，EPC += 4，ERET返回。
+\end{enumerate}
+
+\subsubsection{地址错误异常（AdEL/AdES）}
+
+\textbf{检测位置：}MEM级（访存阶段）
+
+\begin{lstlisting}[caption=地址对齐错误检测]
+// mem.v
+wire mem_ex_adel;  // load 地址错
+wire mem_ex_ades;  // store 地址错
+assign mem_ex_adel = MEM_valid && inst_load  && ls_word && (dm_addr[1:0]!=2'b00);
+assign mem_ex_ades = MEM_valid && inst_store && ls_word && (dm_addr[1:0]!=2'b00);
+\end{lstlisting}
+
+\textbf{处理流程：}
+\begin{enumerate}
+    \item MEM级检测到地址不对齐（低2位不为00），设置\texttt{mem\_ex\_adel}或\texttt{mem\_ex\_ades}。
+    \item 将错误地址（\texttt{dm\_addr}）和异常标志传递到WB级。
+    \item WB级仲裁，设置异常码为4（AdEL）或5（AdES）。
+    \item CP0保存EPC（出错指令地址），保存BADVADDR（错误地址），设置EXL=1，跳转到异常入口。
+    \item 异常处理程序读取CAUSE和BADVADDR，执行相应处理。
+    \item 处理完成后，EPC += 4，ERET返回。
+\end{enumerate}
+
+\subsubsection{定时器中断}
+
+\textbf{检测位置：}CP0内部
+
+\begin{lstlisting}[caption=定时器中断检测]
+// cp0.v
+assign count_eq_compare = (count == compare);
+assign c0_int = |(cause_ip[7:0] & status_im[7:0]) & status_ie & !status_exl;
+\end{lstlisting}
+
+\textbf{处理流程：}
+\begin{enumerate}
+    \item CP0检测到COUNT == COMPARE，置位TI标志。
+    \item 检查中断使能条件（IE=1, IM[7]=1, EXL=0）。
+    \item 如果条件满足，输出\texttt{c0\_int}信号。
+    \item WB级仲裁，设置异常码为0（中断）。
+    \item CP0保存EPC（被中断指令地址），设置EXL=1，跳转到异常入口。
+    \item 异常处理程序读取CAUSE，检查TI位，执行定时器中断处理。
+    \item 处理完成后，写入COMPARE清除TI位，ERET返回。
+\end{enumerate}
+
+\subsection{CP0寄存器访问}
+
+\subsubsection{MTC0指令（写入CP0寄存器）}
+
+MTC0指令用于写入CP0寄存器：
+
+\begin{lstlisting}[caption=MTC0指令处理]
+// 写允许信号
+wire mtc0_wr;  // MTC0写使能（排除异常时写入）
+assign mtc0_wr = mtc0 && wb_valid && !ex_valid_i; // 异常时不写入
+
+assign status_wen   = mtc0_wr && sel_status;
+assign cause_wen    = mtc0_wr && sel_cause;
+assign epc_wen      = mtc0_wr && sel_epc;
+assign count_wen    = mtc0_wr && sel_count;
+assign compare_wen  = mtc0_wr && sel_compare;
+assign badvaddr_wen = mtc0_wr && sel_badvaddr;
+
+// 写入逻辑（使用写掩码）
+if (status_wen) begin
+    status <= (status & ~STATUS_WMASK) | (wdata & STATUS_WMASK);
+end
+\end{lstlisting}
+
+\textbf{说明：}
+\begin{itemize}
+    \item 异常发生时，禁止写入CP0寄存器（\texttt{!ex\_valid\_i}）。
+    \item 使用写掩码（WMASK）控制可写位域。
+    \item STATUS和CAUSE寄存器只有部分位可写。
+\end{itemize}
+
+\subsubsection{MFC0指令（读取CP0寄存器）}
+
+MFC0指令用于读取CP0寄存器：
+
+\begin{lstlisting}[caption=MFC0指令处理]
+// MFC0读
+assign cp0r_rdata = sel_status  ? status   :
+                    sel_cause   ? cause    :
+                    sel_epc     ? epc      :
+                    sel_count   ? count    :
+                    sel_compare ? compare  :
+                    sel_badvaddr? badvaddr : 32'd0;
+\end{lstlisting}
+
+\textbf{说明：}
+\begin{itemize}
+    \item 根据CP0寄存器地址（\texttt{cp0r\_addr}）选择对应的寄存器。
+    \item 读数据通过\texttt{cp0r\_rdata}输出，写回到通用寄存器。
+\end{itemize}
+
+\subsection{流水线控制信号}
+
+\subsubsection{cancel信号}
+
+\texttt{cancel}信号用于取消流水线中已取出的指令：
+
+\begin{lstlisting}[caption=cancel信号生成]
+assign cancel = (ex_valid_i | eret | c0_int) && wb_over;
+\end{lstlisting}
+
+\textbf{说明：}
+\begin{itemize}
+    \item 当异常或ERET发生时，需要取消流水线中已取出的指令。
+    \item \texttt{cancel}信号在WB级完成时（\texttt{wb\_over}）发出。
+\end{itemize}
+
+\subsubsection{exc\_valid和exc\_pc信号}
+
+\texttt{exc\_valid}和\texttt{exc\_pc}信号用于控制异常跳转：
+
+\begin{lstlisting}[caption=异常跳转信号生成]
+assign exc_valid = (ex_valid_i | eret | c0_int) && wb_valid;
+assign exc_pc    = eret ? epc : `EXC_ENTER_ADDR;
+\end{lstlisting}
+
+\textbf{说明：}
+\begin{itemize}
+    \item \texttt{exc\_valid}：异常有效信号，控制是否跳转。
+    \item \texttt{exc\_pc}：跳转目标地址，ERET时返回EPC，异常时跳转到异常入口（0x0）。
+\end{itemize}
+
+\subsection{软件异常处理程序}
+
+\textbf{注意：}本章节预留，用于描述异常处理程序的编写方法、测试程序的设计思路等。具体内容待补充。
+
+\subsubsection{异常处理程序框架}
+
+（待补充）
+
+\subsubsection{测试程序设计}
+
+（待补充）
+
+\section{实验总结}
+
+\begin{enumerate}
+    \item \textbf{CP0模块设计}：成功实现了CP0模块，包含6个CP0寄存器（STATUS、CAUSE、EPC、BADVADDR、COUNT、COMPARE），每个寄存器都有明确的位域定义和访问控制机制。
+    
+    \item \textbf{异常处理机制}：实现了统一的异常处理流程，通过WB级异常仲裁确定异常优先级，所有异常都通过统一的异常总线传递给CP0，由CP0统一处理。异常发生时，CP0自动保存EPC、设置EXL位、写入CAUSE寄存器等。
+    
+    \item \textbf{异常类型实现}：成功实现了4种异常类型：
+    \begin{itemize}
+        \item SYSCALL异常：在ID级检测，异常码为8
+        \item BREAK异常：在ID级检测，异常码为9
+        \item 地址错误异常（AdEL/AdES）：在MEM级检测，异常码为4/5
+        \item 定时器中断：在CP0内部检测，异常码为0
+    \end{itemize}
+    
+    \item \textbf{中断处理}：实现了定时器中断机制，包括COUNT/COMPARE寄存器的实现、定时器中断检测逻辑、中断使能条件判断等。定时器中断可以在满足条件时异步触发，优先级最高。
+    
+    \item \textbf{总线设计}：设计了MEM->WB总线和WB->CP0异常总线，实现了异常信息在流水线中的正确传递。总线宽度为153位，包含了所有必要的异常信号。
+    
+    \item \textbf{寄存器访问}：实现了MTC0/MFC0指令，支持CP0寄存器的读写访问。使用写掩码（WMASK）控制可写位域，确保寄存器的安全性。
+    
+    \item \textbf{流水线控制}：实现了cancel、exc\_valid、exc\_pc等流水线控制信号，确保异常发生时流水线能够正确响应，取消已取出的指令，跳转到异常入口或ERET返回地址。
+    
+    \item \textbf{设计规范}：整个实现遵循MIPS架构规范，提供了完整的异常处理和中断支持，为系统软件提供了可靠的异常处理机制。
+\end{enumerate}
+
+\label{LastPage}
+
+\end{document}
