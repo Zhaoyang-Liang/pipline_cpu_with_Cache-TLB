@@ -40,7 +40,7 @@
 \vspace{1em}
 \noindent\textbf{关键词：} \textbf{协处理器、检测、处理}
 
-\newpage
+
 
 \section{实验目的与要求}
 
@@ -668,7 +668,7 @@ assign exc_pc    = eret ? epc : `EXC_ENTER_ADDR;
     \item \texttt{exc\_valid}：异常有效信号，控制是否跳转。
     \item \texttt{exc\_pc}：跳转目标地址，ERET时返回EPC，异常时跳转到异常入口（0x0）。
 \end{itemize}
-
+\newpage
 
 \section{软件异常处理程序与仿真结果}
 
@@ -866,6 +866,20 @@ assign exc_pc    = eret ? epc : `EXC_ENTER_ADDR;
 \end{itemize}
 
 当 \texttt{COUNT == COMPARE} 的那一拍到来时，流水线里的指令已经“排队”流动了一段时间，并不保证此时 WB 级正好是 0x94 那条指令。本次仿真里，触发中断的时候，WB 级的 PC 恰好是 0x78，所以 EPC 里就记下了 0x78，这在时序上是说得通的。
+
+\subsection{BREAK异常测试程序}
+\textbf{测试目的：} 验证BREAK异常（异常码9）触发与恢复机制。
+
+\textbf{程序说明：}  也差不多，只是后面的cause变了一下。这里直接附上图片吧：
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{img/break.png}
+    \caption{BREAK异常测试程序}
+\end{figure}
+
+
+这个发生异常的地方是48H，由于这个是最早弄的，当时的testbench还没有把异常处理寄存器给引出来，所以当时没有最下面三个寄存器的值，不太直观，但可以看到后面两个周期也是成功跳转回了00H。\textbf{同时也可以看到4C和50H都被cancle掉了，没有成功WB（前面的所有异常都成功实现了这个）。}
 
 
 
