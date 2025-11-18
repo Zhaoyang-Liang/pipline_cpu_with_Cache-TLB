@@ -670,7 +670,7 @@ assign exc_pc    = eret ? epc : `EXC_ENTER_ADDR;
 \end{itemize}
 
 
-\section{软件异常处理程序}
+\section{软件异常处理程序与仿真结果}
 
 本节分别给出四种异常类型（SYSCALL、BREAK、地址错误、定时器中断）的完整软件异常处理程序。每个程序均由两部分组成：
 \begin{itemize}
@@ -736,13 +736,10 @@ assign exc_pc    = eret ? epc : `EXC_ENTER_ADDR;
 这个不太好对比，因为之前就也是正确的，这里48H是syscall的地址
 
 
-\subsection{BREAK异常测试程序}
+\subsection{AdEL 异常测试程序}
 
-\textbf{测试目的：} 验证BREAK异常（异常码9）触发与恢复机制。
+\textbf{测试目的：} 验证AdEL异常（异常码9）触发与恢复机制。
 
-
-\textbf{程序说明：}  
-执行 \texttt{break} 指令触发异常，异常码9，返回后继续加法与存储。
 
 \begin{table}[H]
 	\centering
@@ -782,7 +779,7 @@ assign exc_pc    = eret ? epc : `EXC_ENTER_ADDR;
 \end{table}
 
 
-50H是异常处理地址：
+50H是异常处理地址，可以看到50H处，后面的指令在50H走到EXE阶段后，跳转为了00H（异常处理成功，也就是成功检测出了异常）：
 
 \begin{figure}[h]
 	\centering
@@ -790,7 +787,7 @@ assign exc_pc    = eret ? epc : `EXC_ENTER_ADDR;
 	\caption{错误地址}
 \end{figure}
 
-
+同时设置Cause寄存器中的ExcCode位为和EPC为50H。操作系统/异常处理函数后续可以根据这两个寄存器的值做更详细的处理。
 
 
 \subsection{定时器中断触发波形分析}
