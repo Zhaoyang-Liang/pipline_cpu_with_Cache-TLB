@@ -293,15 +293,16 @@ module tb;
         $display("Initial PC: %h", IF_pc);
         $display("Initial Inst: %h", IF_inst);
         
-        // Run simulation for 2000 time units
-        #2000;
+        // Run simulation for 5000 time units to see more instructions
+        #5000;
         
-        // Check if fetch is working
-        $display("After 2000ns:");
-        $display("PC: %h", IF_pc);
-        $display("Inst: %h", IF_inst);
-        $display("IF_valid: %b", uut.IF_valid);
-        $display("IF_over: %b", uut.IF_over);
+        // Check final state
+        $display("\n======== Simulation Summary ========");
+        $display("Final PC: %h", IF_pc);
+        $display("Final Inst: %h", IF_inst);
+        $display("Pipeline Status: IF=%b ID=%b EXE=%b MEM=%b WB=%b", 
+                 uut.IF_valid, uut.ID_valid, uut.EXE_valid, uut.MEM_valid, uut.WB_valid);
+        $display("====================================\n");
         
         // End simulation
         $finish;
@@ -311,8 +312,15 @@ module tb;
 
     // Monitor important signals
     initial begin
-        $monitor("Time=%0t, PC=%h, Inst=%h, IF_valid=%b, IF_over=%b", 
-                 $time, IF_pc, IF_inst, uut.IF_valid, uut.IF_over);
+        $monitor("Time=%0t | PC=%h Inst=%h | IF_v=%b IF_over=%b IF_allow=%b | ID_v=%b ID_over=%b ID_allow=%b | EXE_v=%b EXE_allow=%b | MEM_v=%b MEM_allow=%b | WB_v=%b WB_allow=%b | axi_start=%b axi_done=%b axi_busy=%b | fetch_state=%d", 
+                 $time, IF_pc, IF_inst, 
+                 uut.IF_valid, uut.IF_over, uut.IF_allow_in,
+                 uut.ID_valid, uut.ID_over, uut.ID_allow_in,
+                 uut.EXE_valid, uut.EXE_allow_in,
+                 uut.MEM_valid, uut.MEM_allow_in,
+                 uut.WB_valid, uut.WB_allow_in,
+                 uut.IF_module.axi_start, uut.IF_module.axi_done, uut.IF_module.axi_busy,
+                 uut.IF_module.current_state);
     end
 
 endmodule

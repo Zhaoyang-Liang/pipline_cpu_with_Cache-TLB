@@ -120,6 +120,14 @@ initial begin
             default: ram[j] = 32'h00000000; // nop
         endcase
     end
+    
+    // 调试：打印前几条指令
+    #1; // 等待初始化完成
+    $display("========== AXI_SLAVE RAM Initialization ==========");
+    $display("ram[0] = %h (expect 24010001)", ram[0]);
+    $display("ram[1] = %h (expect 00011100)", ram[1]);
+    $display("ram[2] = %h (expect 00411821)", ram[2]);
+    $display("==================================================");
 end
 
 
@@ -276,8 +284,8 @@ always @(posedge S_AXI_ACLK) begin
         // 写数据 & 写 RAM
         if (wr_active && w_hs) begin
             // 当前地址转换为 RAM 索引（word 地址）
-            // 注意防止越界：简单模 RAM_DEPTH
-            idx = (S_AXI_AWADDR >> 2) & (C_S_RAM_DEPTH - 1);
+            // 注意防止越界：简单模 RAM_DEPTH（使用已锁存的wr_addr_reg）
+            idx = (wr_addr_reg >> 2) & (C_S_RAM_DEPTH - 1);
 
             // 处理 WSTRB
             for (i = 0; i < C_S_AXI_DATA_WIDTH/8; i = i + 1) begin
@@ -332,35 +340,42 @@ always @(posedge S_AXI_ACLK) begin
             rd_size_reg <= S_AXI_ARSIZE;
             rd_burst_reg<= S_AXI_ARBURST;
             rd_cnt      <= 8'd0;
+            
+            // 调试信息（去掉时间限制）
+            $display("Time=%0t AXI_SLAVE: AR handshake, ARADDR=%h, ARVALID=%b, ARREADY=%b", 
+                     $time, S_AXI_ARADDR, S_AXI_ARVALID, S_AXI_ARREADY);
         end
 
         // 读数据产生逻辑：
         // 当：没有有效数据 或者 当前 beat 已被接受(r_hs)，且仍然有读事务
-        if (rd_active && (!rvalid_reg || r_hs)) begin
-            // 从 RAM 读取当前地址
-            idx_r = (S_AXI_ARADDR >> 2) & (C_S_RAM_DEPTH - 1);
+        // 且还没发完所有beat
+        if (rd_active && (!rvalid_reg || r_hs) && (rd_cnt <= rd_len_reg)) begin
+            // 从 RAM 读取当前地址（使用已锁存的rd_addr_reg，而非ARADDR）
+            idx_r = (rd_addr_reg >> 2) & (C_S_RAM_DEPTH - 1);
             rdata_reg <= ram[idx_r];
+            
+            // 调试信息（去掉时间限制）
+            $display("Time=%0t AXI_SLAVE READ: rd_addr_reg=%h, idx=%d, data=%h, rd_cnt=%d, rd_len_reg=%d", 
+                     $time, rd_addr_reg, idx_r, ram[idx_r], rd_cnt, rd_len_reg);
             
             rvalid_reg<= 1'b1;
             rlast_reg <= (rd_cnt == rd_len_reg);
 
             // 更新计数和地址
             rd_cnt <= rd_cnt + 1'b1;
-            rd_addr_reg <= axi_next_addr(rd_addr_reg,
-                                         rd_burst_reg,
-                                         rd_size_reg,
-                                         rd_len_reg);
-
-            // 如果这是最后一个 beat 且被握手，就结束事务
-            if (rd_cnt == rd_len_reg && r_hs) begin
-                rd_active  <= 1'b0;
-                rvalid_reg <= 1'b0;
-                rlast_reg  <= 1'b0;
+            
+            // 只有不是最后一拍时才递增地址
+            if (rd_cnt < rd_len_reg) begin
+                rd_addr_reg <= axi_next_addr(rd_addr_reg,
+                                             rd_burst_reg,
+                                             rd_size_reg,
+                                             rd_len_reg);
             end
         end
 
-        // 最后一拍握手后清 RVALID（上面就会处理）
-        if (!rd_active && r_hs) begin
+        // 最后一拍握手后清除状态
+        if (rvalid_reg && rlast_reg && r_hs) begin
+            rd_active  <= 1'b0;
             rvalid_reg <= 1'b0;
             rlast_reg  <= 1'b0;
         end

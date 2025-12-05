@@ -516,6 +516,7 @@ axi_full_master #(
     // IF_over = axi_done;
 
     decode ID_module(               // “Î¬Îº∂
+        .clk        (clk        ),  // I, 1
         .ID_valid   (ID_valid   ),  // I, 1
         .IF_ID_bus_r(IF_ID_bus_r),  // I, 64
         .rs_value   (rs_value   ),  // I, 32

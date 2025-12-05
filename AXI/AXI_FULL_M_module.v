@@ -254,6 +254,8 @@ always @(posedge M_AXI_ACLK) begin
                     // 防止 user_len 为 0
                     len_reg  <= (user_len == 8'd0) ? 8'd1 : user_len;
                     rw_reg   <= user_rw;
+                    $display("Time=%0t AXI_MASTER: user_start, user_addr=%h, user_rw=%b", 
+                             $time, user_addr, user_rw);
                 end
             end
 
@@ -287,11 +289,16 @@ always @(posedge M_AXI_ACLK) begin
 
             // 读地址阶段
             ST_AR: begin
-                if (!M_AXI_ARVALID)
+                if (!M_AXI_ARVALID) begin
                     M_AXI_ARVALID <= 1'b1;
+                    $display("Time=%0t AXI_MASTER: Setting ARVALID=1, ARADDR=%h, addr_reg=%h", 
+                             $time, M_AXI_ARADDR, addr_reg);
+                end
 
                 if (M_AXI_ARVALID && M_AXI_ARREADY) begin
                     M_AXI_ARVALID <= 1'b0;
+                    $display("Time=%0t AXI_MASTER: AR handshake complete, ARADDR=%h", 
+                             $time, M_AXI_ARADDR);
                 end
             end
 

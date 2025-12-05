@@ -116,34 +116,30 @@ module fetch(
     end
 
     // AXI 控制信号
-    reg start_pulse;
-
     always @(posedge clk) begin
         if (!resetn) begin
             axi_start <= 1'b0;
-            axi_addr <= `STARTADDR;
-            start_pulse <= 1'b0;
+            axi_addr  <= `STARTADDR;
         end
         else begin
-            // 生成一个时钟周期的start脉冲
-            if (current_state == REQUEST && !start_pulse) begin
-                axi_start <= 1'b1;
+            // 在 REQUEST 状态发出 1 拍脉冲，并锁存当前 PC 为 AXI 地址
+            axi_start <= (current_state == REQUEST);
+            if (current_state == REQUEST) begin
                 axi_addr <= pc;
-                start_pulse <= 1'b1;
-            end
-            else begin
-                axi_start <= 1'b0;
-                start_pulse <= 1'b0;
+                $display("Time=%0t FETCH: Requesting PC=%h", $time, pc);
             end
         end
     end
 
     //===================== IF_over 控制 ======================
+    // IF_over 变为握手机制：axi_done 置位，next_fetch 拉低表示下级已接收
     always @(posedge clk) begin
         if (!resetn)
             IF_over <= 1'b0;
-        else
-            IF_over <= axi_done;
+        else if (axi_done)
+            IF_over <= 1'b1;          // 指令已取回
+        else if (next_fetch)
+            IF_over <= 1'b0;          // 下级已接收，准备下一条
     end
 
     //===================== 输出 ======================

@@ -100,6 +100,8 @@ module mem(
     //---------------------------------------------
     // AXI handshake 控制
     //---------------------------------------------
+    reg axi_started;  // 标记当前MEM操作是否已发起AXI
+    
     always @(posedge clk) begin
         if (!resetn) begin
             axi_start  <= 1'b0;
@@ -107,37 +109,44 @@ module mem(
             axi_addr   <= 32'b0;
             axi_wdata  <= 32'b0;
             axi_wvalid <= 1'b0;
+            axi_started <= 1'b0;
         end
         else begin
             axi_start  <= 1'b0;
             axi_wvalid <= 1'b0;
+            
+            // MEM级允许新指令进入时，清除已发起标志
+            if (MEM_allow_in)
+                axi_started <= 1'b0;
 
             // ---------------- store ----------------
-            if (do_store) begin
-                axi_addr  <= exe_result;
-                axi_rw    <= 1'b0;        // 写
-                axi_wdata <= store_data;
-                axi_start <= 1'b1;        // 发起 write
-
+            if (do_store && !axi_started) begin
+                axi_addr    <= exe_result;
+                axi_rw      <= 1'b0;        // 写
+                axi_wdata   <= store_data;
+                axi_start   <= 1'b1;        // 发起 write
+                axi_started <= 1'b1;
+                
                 if (!axi_busy)
                     axi_wvalid <= 1'b1;   // 发送写数据
             end
 
             // ---------------- load ----------------
-            if (do_load) begin
-                axi_addr  <= exe_result;
-                axi_rw    <= 1'b1;     // 读
-                axi_start <= 1'b1;     // 发起 read
+            if (do_load && !axi_started) begin
+                axi_addr    <= exe_result;
+                axi_rw      <= 1'b1;        // 读
+                axi_start   <= 1'b1;        // 发起 read
+                axi_started <= 1'b1;
             end
         end
     end
 
     //---------------------------------------------
     // MEM_over：
-    //  load : wait axi_done
-    //  store: wait axi_done (写响应 BVALID)
+    //  非访存指令：立即完成（MEM_valid即表示完成）
+    //  load/store：等待 axi_done
     //---------------------------------------------
-    assign MEM_over = axi_done;
+    assign MEM_over = (inst_load | inst_store) ? axi_done : MEM_valid;
 
     //---------------------------------------------
     // MEM_result：load 返回 axi_rdata

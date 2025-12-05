@@ -13,6 +13,7 @@
 `define EXC_BUS_WIDTH       33
 
 module decode(                      // 译码级
+    input              clk,
     input              ID_valid,    // 译码级有效信号
     input      [ 63:0] IF_ID_bus_r, // IF->ID总线
     input      [ 31:0] rs_value,    // 第一源操作数值
@@ -325,12 +326,16 @@ module decode(                      // 译码级
     // assign rt_wait = ~inst_no_rt & (rt!=5'd0)
     //                & ( (rt==EXE_wdest) | (rt==MEM_wdest) | (rt==WB_wdest) );
     
-    //对于分支跳转指令，只有在IF执行完成后，才可以算ID完成；
-    //否则，ID级先完成了，而IF还在取指令，则next_pc不能锁存到PC里去，
-    //那么等IF完成，next_pc能锁存到PC里去时，jbr_bus上的数据已变成无效，
-    //导致分支跳转失败
-    //(~inst_jbr | IF_over)即是(~inst_jbr | (inst_jbr & IF_over))
-    assign ID_over = ID_valid & (~inst_jbr | IF_over) & ~stall_required;
+    // IF_over 是取指阶段的完成信号，但它与 ID_valid 并不同拍。
+    // 若直接用 IF_over，会在“首条指令”时 ID_valid 还未拉高导致 ID_over 恒为 0，
+    // 译码级无法前推。打拍对齐到 ID 阶段使用。
+    reg IF_over_d;
+    always @(posedge clk) begin
+        IF_over_d <= IF_over;
+    end
+
+    // 对于分支跳转指令，必须等待 IF 完成；其他指令直接受 stall_required 控制
+    assign ID_over = ID_valid & (~inst_jbr | IF_over_d) & ~stall_required;
 //-----{ID执行完成}end
 
 //-----{ID->EXE总线}begin
