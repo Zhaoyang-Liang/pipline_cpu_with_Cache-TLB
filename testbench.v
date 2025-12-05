@@ -142,13 +142,18 @@ module tb;
 
 
     //======================================================================
-    //  AXI Slave for Instruction Memory
+    //  AXI Slave for Instruction Memory (Simplified)
     //======================================================================
     axi_slave_module #(
         .C_S_AXI_ID_WIDTH    (1),
         .C_S_AXI_DATA_WIDTH  (32),
         .C_S_AXI_ADDR_WIDTH  (32),
-        .C_S_RAM_DEPTH       (1024)
+        .C_S_AXI_AWUSER_WIDTH(0),
+        .C_S_AXI_ARUSER_WIDTH(0),
+        .C_S_AXI_WUSER_WIDTH (0),
+        .C_S_AXI_RUSER_WIDTH (0),
+        .C_S_AXI_BUSER_WIDTH (0),
+        .C_S_RAM_DEPTH       (256)
     ) instr_ram (
         .S_AXI_ACLK     (clk),
         .S_AXI_ARESETN  (resetn),
@@ -205,13 +210,18 @@ module tb;
 
 
     //======================================================================
-    //  AXI Slave for Data Memory
+    //  AXI Slave for Data Memory (Simplified)
     //======================================================================
     axi_slave_module #(
         .C_S_AXI_ID_WIDTH    (1),
         .C_S_AXI_DATA_WIDTH  (32),
         .C_S_AXI_ADDR_WIDTH  (32),
-        .C_S_RAM_DEPTH       (1024)
+        .C_S_AXI_AWUSER_WIDTH(0),
+        .C_S_AXI_ARUSER_WIDTH(0),
+        .C_S_AXI_WUSER_WIDTH (0),
+        .C_S_AXI_RUSER_WIDTH (0),
+        .C_S_AXI_BUSER_WIDTH (0),
+        .C_S_RAM_DEPTH       (256)
     ) data_ram (
         .S_AXI_ACLK     (clk),
         .S_AXI_ARESETN  (resetn),
@@ -268,21 +278,41 @@ module tb;
 
 
     //======================================================================
-    //  ?????
+    //  Testbench Logic
     //======================================================================
     initial begin
         clk = 0;
         resetn = 0;
         rf_addr = 0;
 
-        // // ???????
-        // $readmemh("pipeline_inst/instr.hex", instr_ram.ram);
-        // $readmemh("data.hex",  data_ram.ram);
-
+        // Wait a bit before releasing reset
         #100;
         resetn = 1;
+        
+        $display("Time=%0t: Reset released", $time);
+        $display("Initial PC: %h", IF_pc);
+        $display("Initial Inst: %h", IF_inst);
+        
+        // Run simulation for 2000 time units
+        #2000;
+        
+        // Check if fetch is working
+        $display("After 2000ns:");
+        $display("PC: %h", IF_pc);
+        $display("Inst: %h", IF_inst);
+        $display("IF_valid: %b", uut.IF_valid);
+        $display("IF_over: %b", uut.IF_over);
+        
+        // End simulation
+        $finish;
     end
 
     always #5 clk = ~clk;
+
+    // Monitor important signals
+    initial begin
+        $monitor("Time=%0t, PC=%h, Inst=%h, IF_valid=%b, IF_over=%b", 
+                 $time, IF_pc, IF_inst, uut.IF_valid, uut.IF_over);
+    end
 
 endmodule

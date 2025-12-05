@@ -115,8 +115,8 @@ reg [C_M_AXI_ADDR_WIDTH-1:0] addr_reg;
 reg [7:0]                     len_reg;    // 实际 beat 数（>=1）
 reg                           rw_reg;     // 0=写  1=读
 
-// 写数据 beat 计数
-reg [7:0]                     w_beat_cnt;
+// 读/写数据 beat 计数
+reg [7:0]                     beat_cnt;
 
 // 错误标志
 reg                           error_reg;
@@ -125,13 +125,53 @@ reg                           error_reg;
 reg                           done_reg;
 
 /**********************AXI 固定参数*************************/
+// 为USER信号创建条件赋值，处理宽度为0的情况
+generate
+  if (C_M_AXI_AWUSER_WIDTH > 0) begin : gen_awuser
+    assign M_AXI_AWUSER = {C_M_AXI_AWUSER_WIDTH{1'b0}};
+  end else begin
+    assign M_AXI_AWUSER = 1'b0;  // 用于宽度为0的情况
+  end
+endgenerate
+
+generate
+  if (C_M_AXI_WUSER_WIDTH > 0) begin : gen_wuser
+    assign M_AXI_WUSER = {C_M_AXI_WUSER_WIDTH{1'b0}};
+  end else begin
+    assign M_AXI_WUSER = 1'b0;  // 用于宽度为0的情况
+  end
+endgenerate
+
+generate
+  if (C_M_AXI_ARUSER_WIDTH > 0) begin : gen_aruser
+    assign M_AXI_ARUSER = {C_M_AXI_ARUSER_WIDTH{1'b0}};
+  end else begin
+    assign M_AXI_ARUSER = 1'b0;  // 用于宽度为0的情况
+  end
+endgenerate
+
+generate
+  if (C_M_AXI_BUSER_WIDTH > 0) begin : gen_buser
+    assign M_AXI_BUSER = {C_M_AXI_BUSER_WIDTH{1'b0}};
+  end else begin
+    assign M_AXI_BUSER = 1'b0;  // 用于宽度为0的情况
+  end
+endgenerate
+
+generate
+  if (C_M_AXI_RUSER_WIDTH > 0) begin : gen_ruser
+    assign M_AXI_RUSER = {C_M_AXI_RUSER_WIDTH{1'b0}};
+  end else begin
+    assign M_AXI_RUSER = 1'b0;  // 用于宽度为0的情况
+  end
+endgenerate
+
 assign M_AXI_AWID    = {C_M_AXI_ID_WIDTH{1'b0}};
 assign M_AXI_AWBURST = 2'b01;          // INCR
 assign M_AXI_AWLOCK  = 1'b0;
 assign M_AXI_AWCACHE = 4'b0010;
 assign M_AXI_AWPROT  = 3'b000;
 assign M_AXI_AWQOS   = 4'b0000;
-assign M_AXI_AWUSER  = {C_M_AXI_AWUSER_WIDTH{1'b0}};
 
 assign M_AXI_ARID    = {C_M_AXI_ID_WIDTH{1'b0}};
 assign M_AXI_ARBURST = 2'b01;          // INCR
@@ -139,13 +179,18 @@ assign M_AXI_ARLOCK  = 1'b0;
 assign M_AXI_ARCACHE = 4'b0010;
 assign M_AXI_ARPROT  = 3'b000;
 assign M_AXI_ARQOS   = 4'b0000;
-assign M_AXI_ARUSER  = {C_M_AXI_ARUSER_WIDTH{1'b0}};
 
 assign M_AXI_AWSIZE  = clogb2(C_M_AXI_DATA_WIDTH/8);
 assign M_AXI_ARSIZE  = clogb2(C_M_AXI_DATA_WIDTH/8);
 
-assign M_AXI_WUSER   = {C_M_AXI_WUSER_WIDTH{1'b0}};
-assign M_AXI_WSTRB   = {(C_M_AXI_DATA_WIDTH/8){1'b1}};
+// 处理STRB宽度为0的情况
+generate
+  if (C_M_AXI_DATA_WIDTH/8 > 0) begin
+    assign M_AXI_WSTRB = {(C_M_AXI_DATA_WIDTH/8){1'b1}};
+  end else begin
+    assign M_AXI_WSTRB = 1'b1;  // 至少1位
+  end
+endgenerate
 
 assign M_AXI_BREADY  = (state == ST_B);   // 只在等待响应阶段拉高
 
@@ -164,10 +209,10 @@ assign M_AXI_WDATA  = user_wdata;
 assign M_AXI_WVALID = (state == ST_W) && user_wvalid;
 
 // 当前 beat 是否为最后一拍
-wire last_wbeat = (w_beat_cnt == len_reg - 1);
+wire last_beat = (beat_cnt == len_reg - 1);
 
 // WLAST 只在最后一个有效拍为 1
-assign M_AXI_WLAST  = (state == ST_W) && user_wvalid && last_wbeat;
+assign M_AXI_WLAST  = (state == ST_W) && user_wvalid && last_beat;
 
 // 用户侧写 ready：只有在写数据阶段并且从机 ready 时有效
 assign user_wready  = (state == ST_W) && M_AXI_WREADY;
@@ -188,7 +233,7 @@ always @(posedge M_AXI_ACLK) begin
         addr_reg    <= {C_M_AXI_ADDR_WIDTH{1'b0}};
         len_reg     <= 8'd1;
         rw_reg      <= 1'b0;
-        w_beat_cnt  <= 8'd0;
+        beat_cnt    <= 8'd0;
         error_reg   <= 1'b0;
         done_reg    <= 1'b0;
         M_AXI_AWVALID <= 1'b0;
@@ -201,7 +246,7 @@ always @(posedge M_AXI_ACLK) begin
             ST_IDLE: begin
                 M_AXI_AWVALID <= 1'b0;
                 M_AXI_ARVALID <= 1'b0;
-                w_beat_cnt    <= 8'd0;
+                beat_cnt      <= 8'd0;
                 error_reg     <= 1'b0;
 
                 if (user_start) begin
@@ -220,7 +265,7 @@ always @(posedge M_AXI_ACLK) begin
 
                 if (M_AXI_AWVALID && M_AXI_AWREADY) begin
                     M_AXI_AWVALID <= 1'b0;
-                    w_beat_cnt    <= 8'd0;
+                    beat_cnt      <= 8'd0;
                 end
             end
 
@@ -228,7 +273,7 @@ always @(posedge M_AXI_ACLK) begin
             ST_W: begin
                 if (M_AXI_WVALID && M_AXI_WREADY) begin
                     // 每发送一个 beat 就 +1
-                    w_beat_cnt <= w_beat_cnt + 1'b1;
+                    beat_cnt <= beat_cnt + 1'b1;
                 end
             end
 
@@ -255,6 +300,7 @@ always @(posedge M_AXI_ACLK) begin
                 if (M_AXI_RVALID && M_AXI_RREADY) begin
                     if (M_AXI_RRESP != 2'b00)
                         error_reg <= 1'b1;  // 记录错误
+                    beat_cnt <= beat_cnt + 1'b1;
                 end
             end
 
@@ -268,9 +314,6 @@ always @(posedge M_AXI_ACLK) begin
 end
 
 /**********************状态机：组合逻辑*************************/
-// 这是一段 always 块，敏感列表写为 (*)，意思是该 always 块为“组合逻辑”，所有输入信号变化都会触发它（“所有输入都敏感”）。
-// 一般和组合逻辑（即没有时序语句的 always，比如不含 posedge/negedge 的 always）一起用，相比于列出所有敏感信号更简便。
-// 作用是让仿真工具自动推断出这个 always 应该受哪些信号影响，但属于 SystemVerilog/Verilog 2001 的写法。
 always @(*) begin
     next_state = state;
     case (state)
@@ -290,7 +333,7 @@ always @(*) begin
         end
 
         ST_W: begin
-            if (M_AXI_WVALID && M_AXI_WREADY && last_wbeat)
+            if (M_AXI_WVALID && M_AXI_WREADY && last_beat)
                 next_state = ST_B;
         end
 

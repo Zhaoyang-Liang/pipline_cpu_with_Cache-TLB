@@ -1,0 +1,426 @@
+\documentclass[a4paper]{article}
+\input{style/ch_xelatex.tex}
+\input{style/scala.tex}
+\renewcommand {\thefigure}{\thesection{}.\arabic{figure}}%图片按章标号
+
+
+% 代码样式设置（Verilog）
+\lstdefinelanguage{Verilog}{
+    morekeywords={module, endmodule, input, output, wire, reg, always, assign, if, else, begin, end, posedge, negedge, parameter, localparam, case, default},
+    sensitive=true,
+    morecomment=[l]{//},
+    morecomment=[n]{/*}{*/},
+    morestring=[b]"
+}
+
+\lstset{
+    language=Verilog,
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{blue}\bfseries,
+    commentstyle=\color{dkgreen},
+    stringstyle=\color{red},
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    stepnumber=1,
+    numbersep=5pt,
+    backgroundcolor=\color{gray!10},
+    frame=single,
+    breaklines=true,
+    breakatwhitespace=true,
+    tabsize=4,
+    showspaces=false,
+    showstringspaces=false
+}
+
+\usepackage{booktabs}
+\usepackage{geometry}
+\geometry{left=2.5cm,right=2.5cm,top=3cm,bottom=3cm}
+
+\begin{document}
+
+\renewcommand{\figurename}{图}
+\renewcommand{\contentsname}{目录}  
+\cfoot{\thepage\ of \pageref{LastPage}}
+\renewcommand{\abstractname}{\textbf{\Large 摘要}} 
+
+\begin{center}
+    \huge{\textbf{在五级流水CPU上实现AXI总线}}
+\end{center}
+
+\begin{center}
+    \textbf{姓名}：\underline{梁朝阳} \quad
+    \textbf{专业}：\underline{密码科学与技术}
+\end{center}
+
+\tableofcontents
+
+\vspace*{1cm}
+
+\noindent{\Large\textbf{摘要}}
+
+\vspace{1em}
+
+\textbf{AXI总线实现} 
+
+\textbf{CPU加上总线} 
+
+\vspace{1em}
+\noindent\textbf{关键词：} 
+
+\newpage
+\section{实验要求}
+参考《CPU设计实战》的第8章，自己动手实现总线接口相关功能。要求：
+\begin{enumerate}
+    \item 根据自己情况，类SRAM总线和AXI总线完成一项支持即可，建议选择AXI总线（需要查阅AXI总线文档）。
+    \item 虽然说不建议使用当前五级流水的代码了，但是我学习后想保持一个实验的连续性，而且我想把这个CPU实现完全，因为还是采用了这个CPU的代码。
+\end{enumerate}
+
+\section{AXI原理}
+\section{总览}
+
+AXI 总线是一种突发总线，突发传输。一直连续的传输，比如说突发8次传输，就是指传输数据连续的传输。（突发传输的地址是连续的，数据是连续的）
+
+\begin{enumerate}
+    \item 读：地址控制（主机(Master)发送读地址）-> 从机(Slave)发送数据。
+    \item 写：地址控制（主机发送读地址）-> 主机发送数据 -> 接受完后response。
+\end{enumerate}
+
+\section{AXI的五个通道的信号}
+
+\subsection{全局信号}
+\begin{table}[H]
+    \centering
+    \caption{全局信号 | Global Signals}
+    \label{tab:global_signals}
+    \begin{tabular}{cccc}
+        \toprule
+        \textbf{信号} & \textbf{来源} & \textbf{描述} \\
+        \midrule
+        ACLK & 时钟源 & 全局时钟信号，所有信号在时钟上升沿采样 \\
+        ARESETn & 复位源 & 全局复位信号，低电平有效\\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{写地址}
+\begin{table}[H]
+    \centering
+    \caption{写地址通道信号|Write address channel signals}
+    \label{tab:write_address_channel_signals}
+    \begin{tabular}{cccc}
+        \toprule
+        \textbf{通道}&  \textbf{来源} & \textbf{宽度} & \textbf{描述} \\
+        \midrule
+        AWID[3:0] & Master & 4 & 写地址ID \\
+        \textbf{\textcolor{red}{AWADDR[31:0]}} & Master & 32 & 写地址 \\
+        \textbf{\textcolor{red}{AWLEN[3:0]}} & Master & 4 & 给出了突发传输几次 \\
+        \textbf{\textcolor{red}{AWSIZE[2:0]}} & Master & 3 & 突发传输的数据宽度 。例如有32个字节，那么size是4 。\\
+        AWBURST[1:0] & Master & 2 & 突发传输类型 $\dagger $\\
+        AWLOCK[1:0] & -- & 2 & AXI不支持锁 \\
+        AWCACHE[3:0] & Master & 4 & cache类型 \\
+        AWPROT[2:0] & Master & 3 & Protection type. (不是端口,而是保护) \\
+        AWVALID & Master & 1 & 写地址有效 \\    
+        AWREADY & Slave & 1 & 写地址准备好 $\ddagger$ \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+$\dagger$ 固定自增扫描打包，00: fixed, 01: increment, 10: wrapping. 
+
+$\ddagger$ AWVALID \& AWREADY为1 时可以数据有效
+
+\subsection{写数据}
+
+\begin{table}[H]
+    \centering
+    \caption{写地址通道信号|Write address channel signals}
+    \label{tab:write_address_channel_signals}
+    \begin{tabular}{cccc}
+        \toprule
+        \textbf{通道}&  \textbf{来源} & \textbf{宽度} & \textbf{描述} \\
+        \midrule
+        WID[3:0] & Master & 4 & 写数据ID \\
+        \textbf{\textcolor{red}{WDATA[31:0]}} & Master & 32 & 写数据 \\
+        \textbf{\textcolor{red}{WSTRB[3:0]}} & Master & 4 & （掩码/闪光）写数据有效字节 $\dagger$ \\
+        \textbf{\textcolor{red}{WLAST}} & Master & 1 & 写数据最后一个 \\
+        WVALID & Master & 1 & 写数据有效 \\
+        WREADY & Slave & 1 & 写数据准备好 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+$\dagger$ 例如数据：32'H1234\_5678 和掩码：4'BO111 代表：12 无效，其余有效。 WSTRB[n] correspondsto WDATA[(8 × n) + 7:(8 × n)].
+
+\subsection{写响应}
+\begin{table}[H]
+    \centering
+    \caption{写响应通道信号|Write response channel signals}
+    \label{tab:write_response_channel_signals}
+    \begin{tabular}{cccc}
+        \toprule
+        \textbf{通道}&  \textbf{来源} & \textbf{宽度} & \textbf{描述} \\
+        \midrule
+        BID[3:0] & Slave & 4 & 写响应ID \\
+        \textbf{\textcolor{red}{BRESP[1:0]}} & Slave & 2 & 写响应状态 $\dagger$ \\
+        BVALID & Slave & 1 & 写响应有效 \\
+        BREADY & Master & 1 & 写响应准备好 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+$\dagger$ 写响应状态：00: OKAY, 01: EXOKAY, 10: SLVERR, 11: DECERR。
+
+\subsection{读地址}
+几乎完全和\ref{tab:write_address_channel_signals}一样。
+
+\subsection{读数据}
+
+把RESP信号和写数据信号并在一起了，功能类似写信号。
+
+\subsection{低功耗接口信号}
+
+\begin{table}[H]
+    \centering
+    \caption{低功耗接口信号（Low Power Interface Signals）}
+    \label{tab:low_power_interface_signals}
+    \begin{tabular}{cccc}
+        \toprule
+        \textbf{信号名称}  & \textbf{来源}             & \textbf{描述} \\
+        \midrule
+        CSYSREQ        & 时钟控制器（Clock controller） & SYS low-pow Request\\
+        CSYSACK        & 外设（Peripheral device）      & ACK \\
+        CACTIVE        & 外设（Peripheral device）      & 时钟活跃指示。$\dagger$ \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+$\dagger$ 1=需要时钟，0=不需要时钟。表示外设是否需要其时钟信号。
+
+\section{代码实现历程}
+
+
+
+\subsection{接口与参数定义}
+
+AXI Master 模块的关键参数如下所示：
+
+\begin{lstlisting}[language=Verilog]
+module axi_full_master #(
+    parameter C_M_AXI_ID_WIDTH     = 1,
+    parameter C_M_AXI_ADDR_WIDTH   = 32,
+    parameter C_M_AXI_DATA_WIDTH   = 32,
+    parameter C_M_TARGET_SLAVE_BASE_ADDR = 32'h00000000
+)(
+    input  wire                        M_AXI_ACLK,
+    input  wire                        M_AXI_ARESETN,
+\end{lstlisting}
+
+Master 的接口包括五条 AXI 通道及用户控制接口，用户接口用于控制：操作类型（读/写）、启动信号、访问起始地址、突发长度、写入数据通道、读出数据通道
+
+这使得 Master 能够作为上层模块（CPU 模拟器或测试逻辑）的直接驱动对象。
+
+\subsection{二进制位宽计算函数}
+
+AXI 协议中的 AWSIZE/ARSIZE 字段需要根据数据宽度自动计算。
+使用如下函数：
+
+\begin{lstlisting}[language=Verilog]
+function integer clogb2;
+    input integer number;
+    integer i;
+begin
+    clogb2 = 0;
+    for(i = number-1; i > 0; i = i >> 1)
+        clogb2 = clogb2 + 1;
+end
+endfunction
+\end{lstlisting}
+
+例如10 最后算出的位宽就是2。
+
+\subsection{Master 内部寄存器与信号}
+
+Master 的关键信号包括：
+
+\begin{itemize}
+    \item 地址锁存寄存器（读/写独立）
+    \item 长度计数器
+    \item 当前突发类型
+    \item 写数据 beat 计数器
+    \item 状态机状态寄存器
+    \item 用户侧 busy/done/error 状态
+\end{itemize}
+
+示例：
+
+\begin{lstlisting}[language=Verilog]
+reg [C_M_AXI_ADDR_WIDTH-1:0] addr_reg;
+reg [7:0]                    len_reg;
+reg                          rw_reg;
+reg [7:0]                    wbeat_cnt;
+reg                          error_reg;
+reg                          done_reg;
+\end{lstlisting}
+
+\subsection{协议状态机设计}
+
+AXI Master 包含两套状态机：
+
+\begin{enumerate}
+    \item 写事务状态机：
+    \begin{itemize}
+        \item 写地址阶段（AW）
+        \item 写数据阶段（W）
+        \item 写响应阶段（B）
+    \end{itemize}
+    \item 读事务状态机：
+    \begin{itemize}
+        \item 读地址阶段（AR）
+        \item 读数据阶段（R）
+    \end{itemize}
+\end{enumerate}
+
+写状态机示例：
+
+\begin{lstlisting}[language=Verilog]
+localparam ST_IDLE = 3'd0,
+           ST_AW   = 3'd1,
+           ST_W    = 3'd2,
+           ST_B    = 3'd3,
+           ST_DONE = 3'd4;
+\end{lstlisting}
+
+Master 仅在用户发出 start 信号时进入事务，并在 B/R 通道结束后回到空闲状态。
+
+写地址的控制例：
+
+\begin{lstlisting}[language=Verilog]
+always @(posedge M_AXI_ACLK) begin
+    if (!M_AXI_ARESETN)
+        M_AXI_AWVALID <= 1'b0;
+    else if (state == ST_AW)
+        M_AXI_AWVALID <= 1'b1;
+    else if (M_AXI_AWVALID && M_AXI_AWREADY)
+        M_AXI_AWVALID <= 1'b0;
+end
+\end{lstlisting}
+
+读事务逻辑与其类似，但对应使用 AR/R 通道。
+
+\subsection{Master 写数据逻辑示例}
+
+写数据通道通过用户数据驱动：
+
+\begin{lstlisting}[language=Verilog]
+assign M_AXI_WDATA  = user_wdata;
+assign M_AXI_WVALID = (state == ST_W) && user_wvalid;
+assign M_AXI_WLAST  = (wbeat_cnt == len_reg - 1);
+\end{lstlisting}
+
+写响应处理：
+
+\begin{lstlisting}[language=Verilog]
+if (M_AXI_BVALID && M_AXI_BREADY) begin
+    if (M_AXI_BRESP != 2'b00) error_reg <= 1'b1;
+end
+\end{lstlisting}
+
+Master 将异常状态反馈到 user\_error。
+
+\section{AXI RAM Slave 设计}
+
+\subsection{设计目标}
+
+我实现的 Slave 做到了：
+
+\begin{itemize}
+    \item 支持连续突发（INCR）、固定（FIXED）、回绕（WRAP）
+    \item 支持字节写使能（WSTRB）
+    \item 支持读写并发
+    \item 可配置 RAM 深度
+\end{itemize}
+
+Slave 模块参数如下：
+
+\begin{lstlisting}[language=Verilog]
+parameter C_S_RAM_DEPTH = 256;
+reg [C_S_AXI_DATA_WIDTH-1:0] ram [0:C_S_RAM_DEPTH-1];
+\end{lstlisting}
+
+\subsection{地址递增函数实现}
+
+支持三种突发模式：
+
+\begin{lstlisting}[language=Verilog]
+function [C_S_AXI_ADDR_WIDTH-1:0] axi_next_addr;
+    input [C_S_AXI_ADDR_WIDTH-1:0] addr;
+    input [1:0] burst;
+    input [2:0] size;
+    input [7:0] len;
+begin
+    integer inc = (1 << size);
+    integer bytes = inc * (len + 1);
+
+    case (burst)
+        2'b00: axi_next_addr = addr;            // FIXED
+        2'b01: axi_next_addr = addr + inc;      // INCR
+        2'b10: begin                            // WRAP
+            reg [31:0] base = addr & ~(bytes-1);
+            axi_next_addr = base |
+               ((addr + inc) & (bytes-1));
+        end
+        default: axi_next_addr = addr + inc;
+    endcase
+end
+endfunction
+\end{lstlisting}
+
+\subsection{写通道逻辑}
+
+写地址握手：
+
+\begin{lstlisting}[language=Verilog]
+assign S_AXI_AWREADY = ~wr_active;
+always @(posedge S_AXI_ACLK) begin
+    if (aw_hs) begin
+        wr_active <= 1;
+        wr_addr_reg <= S_AXI_AWADDR;
+        wr_len_reg  <= S_AXI_AWLEN;
+    end
+end
+\end{lstlisting}
+
+写数据：
+
+\begin{lstlisting}[language=Verilog]
+if (wr_active && w_hs) begin
+    integer idx = wr_addr_reg[ADDR_LSB +: RAM_ADDR_WIDTH];
+    for (i=0;i<C_S_AXI_DATA_WIDTH/8;i=i+1)
+        if (S_AXI_WSTRB[i])
+            ram[idx][8*i +: 8] <= S_AXI_WDATA[8*i +: 8];
+end
+\end{lstlisting}
+
+\subsection{读通道逻辑}
+
+读地址握手：
+
+\begin{lstlisting}[language=Verilog]
+assign S_AXI_ARREADY = ~rd_active;
+if (ar_hs) begin
+    rd_active <= 1;
+    rd_addr_reg <= S_AXI_ARADDR;
+    rd_len_reg  <= S_AXI_ARLEN;
+end
+\end{lstlisting}
+
+读数据产生：
+
+\begin{lstlisting}[language=Verilog]
+integer idx_r = rd_addr_reg[ADDR_LSB +: RAM_ADDR_WIDTH];
+rdata_reg <= ram[idx_r];
+rvalid_reg <= 1;
+rlast_reg <= (rd_cnt == rd_len_reg);
+\end{lstlisting}
+
+Slave 按协议连续输出数据直到最后一个 beat。
+
+\label{LastPage}
+
+\end{document}

@@ -1,5 +1,5 @@
 `timescale 1ns / 1ps
-`define STARTADDR 32'H00000034
+`define STARTADDR 32'H00000000
 
 module fetch(
     input             clk,
@@ -47,18 +47,20 @@ module fetch(
     assign {exc_valid, exc_pc} = exc_bus;
 
     // PC + 4
-    assign seq_pc = { pc[31:2] + 1'b1, pc[1:0] };
+    assign seq_pc = pc + 32'd4;
 
     // PC 选择
     assign next_pc = exc_valid ? exc_pc :
                      jbr_taken ? jbr_target :
                      seq_pc;
 
-    // **注意：只有当前指令真正“取回并且被流水接受”时才更新 PC**
+    // **注意：只有当前指令真正"取回并且被流水接受"时才更新 PC**
     always @(posedge clk) begin
         if (!resetn)
             pc <= `STARTADDR;
-        else if (next_fetch && axi_done)
+        // 只有“上一条指令已取回(=IF_over)”且流水线允许进入(next_fetch)
+        // 时才更新 PC，避免 axi_done 脉冲与 next_fetch 错位导致 PC 卡住
+        else if (next_fetch && IF_over)
             pc <= next_pc;
     end
 
@@ -71,42 +73,72 @@ module fetch(
     end
 
     //===================== AXI 读事务触发 ======================
-    // 非常简单的状态机：保证任意时刻最多只挂起 1 个读事务
-    reg started;        // 是否已经发过第一次读
-    reg outstanding;    // 是否有读事务正在进行中
+    // 使用传统parameter定义状态机
+    parameter [1:0] IDLE = 2'b00,
+                  REQUEST = 2'b01,
+                  PENDING = 2'b10,
+                  DONE = 2'b11;
+
+    reg [1:0] current_state, next_state;
+
+    always @(posedge clk) begin
+        if (!resetn)
+            current_state <= IDLE;
+        else
+            current_state <= next_state;
+    end
+
+    always @(*) begin
+        case(current_state)
+            IDLE: begin
+                if (IF_valid && !axi_busy)
+                    next_state = REQUEST;
+                else
+                    next_state = IDLE;
+            end
+            REQUEST: begin
+                next_state = PENDING;  // 发出请求后立即进入PENDING状态
+            end
+            PENDING: begin
+                if (axi_done)
+                    next_state = DONE;
+                else
+                    next_state = PENDING;
+            end
+            DONE: begin
+                if (next_fetch)
+                    next_state = IDLE;
+                else
+                    next_state = DONE;
+            end
+            default: next_state = IDLE;
+        endcase
+    end
+
+    // AXI 控制信号
+    reg start_pulse;
 
     always @(posedge clk) begin
         if (!resetn) begin
-            axi_start   <= 1'b0;
-            axi_addr    <= `STARTADDR;
-            started     <= 1'b0;
-            outstanding <= 1'b0;
+            axi_start <= 1'b0;
+            axi_addr <= `STARTADDR;
+            start_pulse <= 1'b0;
         end
         else begin
-            axi_start <= 1'b0;   // 默认拉低
-
-            // 当前指令读完了
-            if (axi_done)
-                outstanding <= 1'b0;
-
-            // 复位后第一次：直接按当前 pc 取一次指令
-            if (!started && !outstanding && !axi_busy) begin
-                axi_start   <= 1'b1;
-                axi_addr    <= pc;         // 这里是 STARTADDR
-                started     <= 1'b1;
-                outstanding <= 1'b1;
+            // 生成一个时钟周期的start脉冲
+            if (current_state == REQUEST && !start_pulse) begin
+                axi_start <= 1'b1;
+                axi_addr <= pc;
+                start_pulse <= 1'b1;
             end
-            // 后续：当前没有挂起事务时，再取下一条指令
-            else if (started && !outstanding && !axi_busy && IF_valid) begin
-                axi_start   <= 1'b1;
-                axi_addr    <= pc;         // 注意：pc 已经在上一个 axi_done 时更新为下一条
-                outstanding <= 1'b1;
+            else begin
+                axi_start <= 1'b0;
+                start_pulse <= 1'b0;
             end
         end
     end
 
     //===================== IF_over 控制 ======================
-    // AXI 读完成 -> IF 级完成
     always @(posedge clk) begin
         if (!resetn)
             IF_over <= 1'b0;
