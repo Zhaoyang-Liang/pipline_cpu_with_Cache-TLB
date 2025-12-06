@@ -8,5 +8,6 @@
 ## pipline cpu FPGA
 ### bypass 
 ### interrupt
+### AXI
 ### TLB
 ### cache
