@@ -1,0 +1,1108 @@
+\documentclass[a4paper]{article}
+\input{style/ch_xelatex.tex}
+\input{style/scala.tex}
+\renewcommand {\thefigure}{\thesection{}.\arabic{figure}}%图片按章标号
+
+\usepackage{xcolor}
+% 代码样式设置（Verilog）
+
+\lstdefinelanguage{Verilog}{
+	keywords=[1]{module, endmodule, input, output,  reg, always, begin, end, if, else, case, endcase, assign},
+	keywordstyle=[1]\color{blue}\bfseries,
+	keywords=[2]{and, or, nand, nor, xor, xnor, buf,wire, not},
+	keywordstyle=[2]\color{red},
+	sensitive=false, % Verilog 大小写不敏感
+	morecomment=[l][commentstyle]{//},
+	morecomment=[s]{/*}{*/}, % 块注释
+	commentstyle=\color{green}, % 注释风格
+	%morestring=[b]", % 字符串
+	morecomment=[l][commentstyle]{'},
+	morecomment=[l][commentstyle]{"},
+	%morestring=[b]' % 字符
+}
+\definecolor{darkgreen}{rgb}{0,0.5,0}
+\lstset{
+	language=Verilog,
+	basicstyle=\ttfamily\small, % 代码的基本样式
+	commentstyle=\color{darkgreen}, % 注释样式
+	stringstyle=\color{orange}, % 字符串样式
+	numberstyle=\color{gray}, % 设置数字颜色
+	numbers=left, % 行号在左侧
+	numberstyle=\tiny\color{gray}, % 行号样式
+	stepnumber=1, % 行号步进
+	breaklines=true, % 自动换行
+	frame=single, % 代码框
+	tabsize=4, % Tab 大小
+	showstringspaces=false, % 不显示字符串中的空格
+	extendedchars=true, % 支持扩展字符
+}
+
+\usepackage{booktabs}
+\usepackage{geometry}
+\geometry{left=2.5cm,right=2.5cm,top=3cm,bottom=3cm}
+
+\begin{document}
+
+\renewcommand{\figurename}{图}
+\renewcommand{\contentsname}{目录}  
+\cfoot{\thepage\ of \pageref{LastPage}}
+
+
+\renewcommand{\abstractname}{\textbf{\Large 摘要}} 
+
+\begin{center}
+    \huge{\textbf{在五级流水CPU上实现AXI总线}}
+\end{center}
+
+\begin{center}
+    \textbf{姓名}：\underline{梁朝阳} \quad
+    \textbf{专业}：\underline{密码科学与技术}
+\end{center}
+
+\tableofcontents
+
+\vspace*{1cm}
+
+\newpage
+
+
+\noindent{\Large\textbf{摘要}}
+
+\vspace{1em}
+
+因为我想接着在五级流水上实现这个AXI，所以主要自己找了一些资料。
+
+\textbf{参考资料：} 我主要参考了b站上的一个视频，\textbf{\href{https://www.bilibili.com/video/BV1mD4y1p7UK?vd_source=37de53df519eb1b7b2ec347aee6a998f}{【如何科学的设计FPGA：实现AXI总线自由之AXI解读】}}。首先照着这个手敲了一遍AXI，然后想办法怎么把AXI接到CPU上。单独的AXI不是很难，但是接入到五级流水的时候改动非常大。
+
+
+\textbf{AXI总线实现：} 首先系统梳理了 AXI 协议的五通道握手机制、突发传输模式及其在 CPU 访存中的应用场景；随后分别实现了 AXI4-Full Master 与 AXI RAM Slave，支持 INCR、FIXED 与 WRAP 突发方式、字节写使能以及读写并行操作。在与五级流水 CPU 集成过程中，对取指阶段（IF）与访存阶段（MEM）进行了全面改造，通过状态机、握手保持、忙/完成标志及流水线 over/allow 机制，实现了 CPU 与 AXI 总线的无缝交互。
+
+\textbf{CPU加上总线：} 实验过程中解决了 PC 无法更新、指令无法进入流水线、访存阶段死锁、Slave 超读等多个问题，最后实现了 AXI–CPU 通路。最后CPU 能够正确完成指令取指与数据访存，流水线各级协同工作良好，功能仿真结果与期望一致。
+
+\vspace{1em}
+\noindent\textbf{关键词：} AXI 总线；五级流水 CPU
+\newpage
+\section{实验要求}
+参考《CPU设计实战》的第8章，自己动手实现总线接口相关功能。要求：
+\begin{enumerate}
+    \item 根据自己情况，类SRAM总线和AXI总线完成一项支持即可，建议选择AXI总线（需要查阅AXI总线文档）。
+    \item 虽然说不建议使用当前五级流水的代码了，但是我学习后想保持一个实验的连续性，而且我想把这个CPU实现完全，因为还是采用了这个CPU的代码。
+\end{enumerate}
+
+\section{AXI原理}
+\subsection{总览}
+
+AXI 总线是一种突发总线，突发传输。一直连续的传输，比如说突发8次传输，就是指传输数据连续的传输。（突发传输的地址是连续的，数据是连续的）
+
+\begin{enumerate}
+    \item 读：地址控制（主机(Master)发送读地址）-> 从机(Slave)发送数据。
+    \item 写：地址控制（主机发送读地址）-> 主机发送数据 -> 接受完后response。
+\end{enumerate}
+
+\section{AXI的五个通道的信号}
+
+\subsection{全局信号}
+\begin{table}[H]
+    \centering
+    \caption{全局信号 | Global Signals}
+    \label{tab:global_signals}
+    \begin{tabular}{cccc}
+        \toprule
+        \textbf{信号} & \textbf{来源} & \textbf{描述} \\
+        \midrule
+        ACLK & 时钟源 & 全局时钟信号，所有信号在时钟上升沿采样 \\
+        ARESETn & 复位源 & 全局复位信号，低电平有效\\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{写地址}
+\begin{table}[H]
+    \centering
+    \caption{写地址通道信号|Write address channel signals}
+    \label{tab:write_address_channel_signals}
+    \begin{tabular}{cccc}
+        \toprule
+        \textbf{通道}&  \textbf{来源} & \textbf{宽度} & \textbf{描述} \\
+        \midrule
+        AWID[3:0] & Master & 4 & 写地址ID \\
+        \textbf{\textcolor{red}{AWADDR[31:0]}} & Master & 32 & 写地址 \\
+        \textbf{\textcolor{red}{AWLEN[3:0]}} & Master & 4 & 给出了突发传输几次 \\
+        \textbf{\textcolor{red}{AWSIZE[2:0]}} & Master & 3 & 突发传输的数据宽度 。例如有32个字节，那么size是4 。\\
+        AWBURST[1:0] & Master & 2 & 突发传输类型 $\dagger $\\
+        AWLOCK[1:0] & -- & 2 & AXI不支持锁 \\
+        AWCACHE[3:0] & Master & 4 & cache类型 \\
+        AWPROT[2:0] & Master & 3 & Protection type. (不是端口,而是保护) \\
+        AWVALID & Master & 1 & 写地址有效 \\    
+        AWREADY & Slave & 1 & 写地址准备好 $\ddagger$ \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+$\dagger$ 固定自增扫描打包，00: fixed, 01: increment, 10: wrapping. 
+
+$\ddagger$ AWVALID \& AWREADY为1 时可以数据有效
+
+\subsection{写数据}
+
+\begin{table}[H]
+    \centering
+    \caption{写地址通道信号|Write address channel signals}
+    \label{tab:write_address_channel_signals}
+    \begin{tabular}{cccc}
+        \toprule
+        \textbf{通道}&  \textbf{来源} & \textbf{宽度} & \textbf{描述} \\
+        \midrule
+        WID[3:0] & Master & 4 & 写数据ID \\
+        \textbf{\textcolor{red}{WDATA[31:0]}} & Master & 32 & 写数据 \\
+        \textbf{\textcolor{red}{WSTRB[3:0]}} & Master & 4 & （掩码/闪光）写数据有效字节 $\dagger$ \\
+        \textbf{\textcolor{red}{WLAST}} & Master & 1 & 写数据最后一个 \\
+        WVALID & Master & 1 & 写数据有效 \\
+        WREADY & Slave & 1 & 写数据准备好 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+$\dagger$ 例如数据：32'H1234\_5678 和掩码：4'BO111 代表：12 无效，其余有效。 WSTRB[n] correspondsto WDATA[(8 × n) + 7:(8 × n)].
+
+\subsection{写响应}
+\begin{table}[H]
+    \centering
+    \caption{写响应通道信号|Write response channel signals}
+    \label{tab:write_response_channel_signals}
+    \begin{tabular}{cccc}
+        \toprule
+        \textbf{通道}&  \textbf{来源} & \textbf{宽度} & \textbf{描述} \\
+        \midrule
+        BID[3:0] & Slave & 4 & 写响应ID \\
+        \textbf{\textcolor{red}{BRESP[1:0]}} & Slave & 2 & 写响应状态 $\dagger$ \\
+        BVALID & Slave & 1 & 写响应有效 \\
+        BREADY & Master & 1 & 写响应准备好 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+$\dagger$ 写响应状态：00: OKAY, 01: EXOKAY, 10: SLVERR, 11: DECERR。
+
+\subsection{读地址}
+几乎完全和\ref{tab:write_address_channel_signals}一样。
+
+\subsection{读数据}
+
+把RESP信号和写数据信号并在一起了，功能类似写信号。
+
+\subsection{低功耗接口信号}
+
+\begin{table}[H]
+    \centering
+    \caption{低功耗接口信号（Low Power Interface Signals）}
+    \label{tab:low_power_interface_signals}
+    \begin{tabular}{cccc}
+        \toprule
+        \textbf{信号名称}  & \textbf{来源}             & \textbf{描述} \\
+        \midrule
+        CSYSREQ        & 时钟控制器（Clock controller） & SYS low-pow Request\\
+        CSYSACK        & 外设（Peripheral device）      & ACK \\
+        CACTIVE        & 外设（Peripheral device）      & 时钟活跃指示。$\dagger$ \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+$\dagger$ 1=需要时钟，0=不需要时钟。表示外设是否需要其时钟信号。
+
+\section{AXI RAM Master 实现}
+
+
+
+\subsection{接口与参数定义}
+
+AXI Master 模块的关键参数如下所示：
+
+\begin{lstlisting}[columns=fullflexible,frame=shadowbox]
+module axi_full_master #(
+    parameter C_M_AXI_ID_WIDTH     = 1,
+    parameter C_M_AXI_ADDR_WIDTH   = 32,
+    parameter C_M_AXI_DATA_WIDTH   = 32,
+    parameter C_M_TARGET_SLAVE_BASE_ADDR = 32'h00000000
+)(
+    input  wire                        M_AXI_ACLK,
+    input  wire                        M_AXI_ARESETN,
+\end{lstlisting}
+
+Master 的接口包括五条 AXI 通道及用户控制接口，用户接口用于控制：操作类型（读/写）、启动信号、访问起始地址、突发长度、写入数据通道、读出数据通道
+
+这使得 Master 能够作为上层模块（CPU 模拟器或测试逻辑）的直接驱动对象。
+
+\subsection{二进制位宽计算函数}
+
+AXI 协议中的 AWSIZE/ARSIZE 字段需要根据数据宽度自动计算。
+使用如下函数：
+
+\begin{lstlisting}[columns=fullflexible,frame=shadowbox]
+function integer clogb2;
+    input integer number;
+    integer i;
+begin
+    clogb2 = 0;
+    for(i = number-1; i > 0; i = i >> 1)
+        clogb2 = clogb2 + 1;
+end
+endfunction
+\end{lstlisting}
+
+例如10 最后算出的位宽就是2。
+
+\subsection{Master 内部寄存器与信号}
+
+Master 的关键信号包括：
+
+\begin{itemize}
+    \item 地址锁存寄存器（读/写独立）
+    \item 长度计数器
+    \item 当前突发类型
+    \item 写数据 beat 计数器
+    \item 状态机状态寄存器
+    \item 用户侧 busy/done/error 状态
+\end{itemize}
+
+示例：
+
+\begin{lstlisting}[columns=fullflexible,frame=shadowbox]
+reg [C_M_AXI_ADDR_WIDTH-1:0] addr_reg;
+reg [7:0]                    len_reg;
+reg                          rw_reg;
+reg [7:0]                    wbeat_cnt;
+reg                          error_reg;
+reg                          done_reg;
+\end{lstlisting}
+
+\subsection{协议状态机设计/实现}
+
+AXI Master 包含两套状态机：
+
+\begin{enumerate}
+    \item 写事务状态机：
+    \begin{itemize}
+        \item 写地址阶段（AW）
+        \item 写数据阶段（W）
+        \item 写响应阶段（B）
+    \end{itemize}
+    \item 读事务状态机：
+    \begin{itemize}
+        \item 读地址阶段（AR）
+        \item 读数据阶段（R）
+    \end{itemize}
+\end{enumerate}
+
+写状态机示例：
+
+\begin{lstlisting}[columns=fullflexible,frame=shadowbox]
+localparam ST_IDLE = 3'd0,
+           ST_AW   = 3'd1,
+           ST_W    = 3'd2,
+           ST_B    = 3'd3,
+           ST_DONE = 3'd4;
+\end{lstlisting}
+
+Master 仅在用户发出 start 信号时进入事务，并在 B/R 通道结束后回到空闲状态。
+
+写地址的控制例：
+
+\begin{lstlisting}[columns=fullflexible,frame=shadowbox]
+always @(posedge M_AXI_ACLK) begin
+    if (!M_AXI_ARESETN)
+        M_AXI_AWVALID <= 1'b0;
+    else if (state == ST_AW)
+        M_AXI_AWVALID <= 1'b1;
+    else if (M_AXI_AWVALID && M_AXI_AWREADY)
+        M_AXI_AWVALID <= 1'b0;
+end
+\end{lstlisting}
+
+读事务逻辑与其类似，但对应使用 AR/R 通道。
+
+\subsection{Master 写数据逻辑示例}
+
+写数据通道通过用户数据驱动：
+
+\begin{lstlisting}[columns=fullflexible,frame=shadowbox]
+assign M_AXI_WDATA  = user_wdata;
+assign M_AXI_WVALID = (state == ST_W) && user_wvalid;
+assign M_AXI_WLAST  = (wbeat_cnt == len_reg - 1);
+\end{lstlisting}
+
+写响应处理：
+
+\begin{lstlisting}[columns=fullflexible,frame=shadowbox]
+if (M_AXI_BVALID && M_AXI_BREADY) begin
+    if (M_AXI_BRESP != 2'b00) error_reg <= 1'b1;
+end
+\end{lstlisting}
+
+Master 将异常状态反馈到 user\_error。
+
+\section{AXI RAM Slave 实现}
+
+\subsection{目标效果}
+
+我实现的 Slave 做到了：
+
+\begin{itemize}
+    \item 支持连续突发（INCR）、固定（FIXED）、回绕（WRAP）
+    \item 支持字节写使能（WSTRB）
+    \item 支持读写并发
+    \item 可配置 RAM 深度
+\end{itemize}
+
+Slave 模块参数如下：
+
+\begin{lstlisting}[columns=fullflexible,frame=shadowbox]
+parameter C_S_RAM_DEPTH = 256;
+reg [C_S_AXI_DATA_WIDTH-1:0] ram [0:C_S_RAM_DEPTH-1];
+\end{lstlisting}
+
+\subsection{地址递增函数实现}
+
+支持三种突发模式：
+
+\begin{lstlisting}[columns=fullflexible,frame=shadowbox]
+function [C_S_AXI_ADDR_WIDTH-1:0] axi_next_addr;
+    input [C_S_AXI_ADDR_WIDTH-1:0] addr;
+    input [1:0] burst;
+    input [2:0] size;
+    input [7:0] len;
+begin
+    integer inc = (1 << size);
+    integer bytes = inc * (len + 1);
+
+    case (burst)
+        2'b00: axi_next_addr = addr;            // FIXED
+        2'b01: axi_next_addr = addr + inc;      // INCR
+        2'b10: begin                            // WRAP
+            reg [31:0] base = addr & ~(bytes-1);
+            axi_next_addr = base |
+               ((addr + inc) & (bytes-1));
+        end
+        default: axi_next_addr = addr + inc;
+    endcase
+end
+endfunction
+\end{lstlisting}
+
+\subsection{写通道逻辑}
+
+写地址握手：
+
+\begin{lstlisting}[columns=fullflexible,frame=shadowbox]
+assign S_AXI_AWREADY = ~wr_active;
+always @(posedge S_AXI_ACLK) begin
+    if (aw_hs) begin
+        wr_active <= 1;
+        wr_addr_reg <= S_AXI_AWADDR;
+        wr_len_reg  <= S_AXI_AWLEN;
+    end
+end
+\end{lstlisting}
+
+写数据：
+
+\begin{lstlisting}[columns=fullflexible,frame=shadowbox]
+if (wr_active && w_hs) begin
+    integer idx = wr_addr_reg[ADDR_LSB +: RAM_ADDR_WIDTH];
+    for (i=0;i<C_S_AXI_DATA_WIDTH/8;i=i+1)
+        if (S_AXI_WSTRB[i])
+            ram[idx][8*i +: 8] <= S_AXI_WDATA[8*i +: 8];
+end
+\end{lstlisting}
+
+\subsection{读通道逻辑}
+
+读地址握手：
+
+\begin{lstlisting}[columns=fullflexible,frame=shadowbox]
+assign S_AXI_ARREADY = ~rd_active;
+if (ar_hs) begin
+    rd_active <= 1;
+    rd_addr_reg <= S_AXI_ARADDR;
+    rd_len_reg  <= S_AXI_ARLEN;
+end
+\end{lstlisting}
+
+读数据产生：
+
+\begin{lstlisting}[columns=fullflexible,frame=shadowbox]
+integer idx_r = rd_addr_reg[ADDR_LSB +: RAM_ADDR_WIDTH];
+rdata_reg <= ram[idx_r];
+rvalid_reg <= 1;
+rlast_reg <= (rd_cnt == rd_len_reg);
+\end{lstlisting}
+
+Slave 按协议连续输出数据直到最后一个 beat。
+
+\section{AXI总线与CPU的集成}
+
+\subsection{系统架构设计/实现}
+
+在五级流水CPU中，访存操作主要发生在两个阶段：
+
+\begin{enumerate}
+    \item \textbf{取指阶段（IF）}：从指令存储器读取指令
+    \item \textbf{访存阶段（MEM）}：执行 load/store 指令，访问数据存储器
+\end{enumerate}
+
+为此，我采用了了\textbf{双AXI Master}架构：（实际上就是替换掉之前的ROM和RAM，都改成RAM）
+
+\begin{itemize}
+    \item \textbf{指令AXI Master}：专门用于取指，连接到指令RAM Slave
+    \item \textbf{数据AXI Master}：用于load/store操作，连接到数据RAM Slave
+\end{itemize}
+
+顶层模块接口修改如下：
+
+\begin{lstlisting}[columns=fullflexible,frame=shadowbox]
+module pipeline_cpu(
+    input clk,
+    input resetn,
+    
+    // 指令AXI Master接口
+    output [31:0] M_AXI_INSTR_ARADDR,
+    output [7:0]  M_AXI_INSTR_ARLEN,
+    output        M_AXI_INSTR_ARVALID,
+    input         M_AXI_INSTR_ARREADY,
+    input  [31:0] M_AXI_INSTR_RDATA,
+    input         M_AXI_INSTR_RVALID,
+    output        M_AXI_INSTR_RREADY,
+    // ... 其他AXI信号
+    
+    // 数据AXI Master接口
+    output [31:0] M_AXI_DATA_AWADDR,
+    output [31:0] M_AXI_DATA_ARADDR,
+    // ... 其他AXI信号
+);
+\end{lstlisting}
+
+\subsection{取指模块（Fetch）的AXI接口改造}
+
+原始的fetch模块直接连接inst\_rom，现在需要通过AXI总线获取指令。主要修改包括：
+
+\subsubsection{状态机设计}
+
+设计了一个4状态的取指状态机：
+
+\begin{lstlisting}[columns=fullflexible,frame=shadowbox]
+parameter IDLE    = 2'b00,  // 空闲
+          REQUEST = 2'b01,  // 发起AXI请求
+          PENDING = 2'b10,  // 等待AXI响应
+          DONE    = 2'b11;  // 指令就绪
+\end{lstlisting}
+
+状态转移逻辑：
+
+\begin{lstlisting}[columns=fullflexible,frame=shadowbox]
+always @(*) begin
+    case(current_state)
+        IDLE: begin
+            if (IF_valid && !axi_busy)
+                next_state = REQUEST;
+        end
+        REQUEST: begin
+            next_state = PENDING;
+        end
+        PENDING: begin
+            if (axi_done)
+                next_state = DONE;
+        end
+        DONE: begin
+            if (next_fetch)  // 流水线接受指令
+                next_state = IDLE;
+        end
+    endcase
+end
+\end{lstlisting}
+
+\subsubsection{与流水线的握手机制}
+
+关键信号说明：
+\begin{itemize}
+    \item \texttt{axi\_start}：向AXI Master发起读请求（1周期脉冲）
+    \item \texttt{axi\_done}：AXI读事务完成，指令有效
+    \item \texttt{IF\_over}：通知下一级指令准备就绪
+    \item \texttt{next\_fetch}：下一级允许接收新指令
+\end{itemize}
+
+\subsection{访存模块（MEM）的AXI接口改造}
+
+MEM模块需要处理两类操作：
+
+\begin{enumerate}
+    \item \textbf{非访存指令}（如算术运算）：直接通过，\texttt{MEM\_over}立即置1
+    \item \textbf{访存指令}（load/store）：发起AXI事务，等待\texttt{axi\_done}
+\end{enumerate}
+
+关键逻辑：
+
+\begin{lstlisting}[columns=fullflexible,frame=shadowbox]
+// MEM完成信号：区分访存/非访存指令
+assign MEM_over = (inst_load | inst_store) ? 
+                   axi_done : MEM_valid;
+
+// 防止重复发起AXI请求
+reg axi_started;
+always @(posedge clk) begin
+    if (MEM_allow_in)
+        axi_started <= 1'b0;
+    
+    if (do_load && !axi_started) begin
+        axi_start <= 1'b1;
+        axi_started <= 1'b1;
+    end
+end
+\end{lstlisting}
+
+\section{调试过程与问题解决}
+
+\subsection{问题1：取指阶段无法获取指令}
+
+\subsubsection{现象}
+仿真波形显示：
+\begin{itemize}
+    \item \texttt{IF\_pc} 始终为 \texttt{0x00000034}（初始值）
+    \item \texttt{IF\_inst} 始终为 0
+    \item \texttt{IF\_over} 始终为 0
+    \item 流水线完全停滞
+\end{itemize}
+
+\subsubsection{根本原因}
+
+PC更新条件设置错误：
+
+\begin{lstlisting}[columns=fullflexible,frame=shadowbox]
+// 错误的逻辑（问题代码）
+always @(posedge clk) begin
+    if (next_fetch && axi_done)  // 两个信号很少同拍
+        pc <= next_pc;
+end
+\end{lstlisting}
+
+\textbf{分析}：
+\begin{itemize}
+    \item \texttt{axi\_done} 是AXI读完成信号（脉冲）
+    \item \texttt{next\_fetch} 是流水线允许信号，依赖于\texttt{IF\_over}
+    \item \texttt{IF\_over} 又依赖于\texttt{axi\_done}
+    \item 结果：两信号时序错位，永远无法同时为1
+\end{itemize}
+
+\subsubsection{解决方案}
+
+修改PC更新逻辑为"上一条指令完成且允许取下一条"：
+
+\begin{lstlisting}[columns=fullflexible,frame=shadowbox]
+// 正确的逻辑
+always @(posedge clk) begin
+    if (!resetn)
+        pc <= `STARTADDR;
+    else if (next_fetch && IF_over)  // 指令完成+允许
+        pc <= next_pc;
+end
+\end{lstlisting}
+
+\subsection{问题2：指令无法传播到后续流水级}
+
+\subsubsection{现象}
+
+波形显示：
+\begin{itemize}
+    \item 第一条指令成功取到：\texttt{IF\_inst = 0x24010001}
+    \item \texttt{IF\_over = 1}（正确）
+    \item 但 \texttt{ID\_valid} 始终为0，指令未进入ID级
+\end{itemize}
+
+\subsubsection{根本原因}
+
+\texttt{IF\_over}是瞬时脉冲信号，如果ID级当拍没有接受，信号就消失了：
+
+\begin{lstlisting}[columns=fullflexible,frame=shadowbox]
+// 问题代码：IF_over只维持1个周期
+always @(posedge clk)
+    IF_over <= axi_done;
+\end{lstlisting}
+
+\subsubsection{解决方案}
+
+改为\textbf{握手保持}机制：
+
+\begin{lstlisting}[columns=fullflexible,frame=shadowbox]
+// 修正：保持IF_over直到被接受
+always @(posedge clk) begin
+    if (!resetn)
+        IF_over <= 1'b0;
+    else if (axi_done)     // AXI完成时置位
+        IF_over <= 1'b1;
+    else if (next_fetch)   // 被接受时清零
+        IF_over <= 1'b0;
+end
+\end{lstlisting}
+
+\subsection{问题3：ID级缺少时钟信号}
+
+\subsubsection{现象}
+
+综合时报错：
+
+\begin{verbatim}
+ERROR: [VRFC 10-2989] 'clk' is not declared 
+       [decode.v:332]
+\end{verbatim}
+
+\subsubsection{原因}
+
+为了解决时序对齐问题，需要在decode模块中打拍\texttt{IF\_over}信号：
+
+\begin{lstlisting}[columns=fullflexible,frame=shadowbox]
+// decode.v 中新增的打拍逻辑
+reg IF_over_d;
+always @(posedge clk) begin
+    if (!resetn)
+        IF_over_d <= 1'b0;
+    else
+        IF_over_d <= IF_over;
+end
+\end{lstlisting}
+
+但decode模块端口没有\texttt{clk}输入。
+
+\subsubsection{解决方案}
+
+修改decode模块接口和实例化：
+
+\begin{lstlisting}[columns=fullflexible,frame=shadowbox]
+// decode.v 端口增加
+module decode(
+    input clk,        // 新增
+    input resetn,     // 新增
+    input ID_valid,
+    // ... 其他端口
+);
+
+// pipeline_cpu.v 实例化时连接
+decode ID_module(
+    .clk(clk),        // 新增连接
+    .resetn(resetn),  // 新增连接
+    .ID_valid(ID_valid),
+    // ... 其他连接
+);
+\end{lstlisting}
+
+\subsection{问题4：非访存指令卡在MEM级}
+
+\subsubsection{现象}
+
+波形分析：
+
+\begin{verbatim}
+Time=205000: addiu指令进入ID级，ID_over=1
+Time=215000: addiu指令进入EXE级
+Time=225000: addiu指令进入MEM级
+Time=235000: MEM_valid=1, MEM_allow=0 ← 卡住！
+             后续所有指令都停在EXE级之前
+\end{verbatim}
+
+\subsubsection{根本原因}
+
+MEM模块的完成信号设置不当：
+
+\begin{lstlisting}[columns=fullflexible,frame=shadowbox]
+// 错误逻辑：所有指令都等axi_done
+assign MEM_over = axi_done;
+\end{lstlisting}
+
+\textbf{分析}：\texttt{addiu}是算术指令，不需要访存，但MEM模块仍然等待\texttt{axi\_done}。由于没有发起AXI事务，\texttt{axi\_done}永远不会来，导致死锁。
+
+\subsubsection{解决方案}
+
+区分访存和非访存指令：
+
+\begin{lstlisting}[columns=fullflexible,frame=shadowbox]
+// 正确逻辑
+assign MEM_over = (inst_load | inst_store) ? 
+                   axi_done :      // 访存指令等AXI
+                   MEM_valid;      // 非访存立即完成
+\end{lstlisting}
+
+\subsection{问题5：读取到错误的指令数据}
+
+\subsubsection{现象}
+
+调试信息显示：
+
+\begin{verbatim}
+Time=125000 FETCH: Requesting PC=00000000
+Time=155000 AXI_SLAVE: AR handshake, ARADDR=00000000
+Time=165000 AXI_SLAVE READ: addr=0x00, idx=0, 
+            data=24010001 (正确)
+Time=175000 AXI_SLAVE READ: addr=0x04, idx=1, 
+            data=00011100 (错误！多读一次)
+Time=195000 CPU收到: Inst=00011100 ← 错误数据
+\end{verbatim}
+
+指令RAM内容：
+\begin{itemize}
+    \item \texttt{ram[0] = 0x24010001}（正确）
+    \item \texttt{ram[1] = 0x00011100}
+\end{itemize}
+
+CPU应该读到\texttt{ram[0]}，但实际读到了\texttt{ram[1]}。
+
+\subsubsection{根本原因}
+
+AXI Slave的读数据产生逻辑存在bug：
+
+\begin{lstlisting}[columns=fullflexible,frame=shadowbox]
+// 问题代码
+if (rd_active && (!rvalid_reg || r_hs)) begin
+    // 没有检查是否已发完所有beat！
+    idx_r = (rd_addr_reg >> 2);
+    rdata_reg <= ram[idx_r];
+    rd_cnt <= rd_cnt + 1;
+    rd_addr_reg <= rd_addr_reg + 4;  // 地址递增
+end
+\end{lstlisting}
+
+\textbf{问题分析}：
+
+当\texttt{ARLEN=0}（只读1个beat）时：
+\begin{enumerate}
+    \item 第1个周期：\texttt{rd\_cnt=0}，读\texttt{ram[0]}，\texttt{rd\_cnt}变成1，地址+4
+    \item 第2个周期：条件 \texttt{(!rvalid\_reg || r\_hs)} 仍然满足，又读了\texttt{ram[1]}
+    \item CPU最终收到第2次读出的错误数据
+\end{enumerate}
+
+\subsubsection{解决方案}
+
+增加beat计数检查，防止超读：
+
+\begin{lstlisting}[columns=fullflexible,frame=shadowbox]
+// 修正后的逻辑
+if (rd_active && (!rvalid_reg || r_hs) 
+    && (rd_cnt <= rd_len_reg)) begin  // 增加检查
+    
+    idx_r = (rd_addr_reg >> 2);
+    rdata_reg <= ram[idx_r];
+    rvalid_reg <= 1'b1;
+    rlast_reg <= (rd_cnt == rd_len_reg);
+    
+    rd_cnt <= rd_cnt + 1;
+    
+    // 只在非最后一拍时递增地址
+    if (rd_cnt < rd_len_reg)
+        rd_addr_reg <= rd_addr_reg + 4;
+end
+
+// 最后一拍握手后结束事务
+if (rvalid_reg && rlast_reg && r_hs)
+    rd_active <= 1'b0;
+\end{lstlisting}
+
+
+\section{验证结果}
+
+\subsection{整体功能验证}
+
+最终波形显示CPU正常工作：
+
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{img/整体流程.png}
+    \caption{整体流程}
+\end{figure}
+
+\begin{verbatim}[caption=调试的时候增加的输出信息]
+    Time=195000: PC=0x00, Inst=0x24010001 (addiu $1,$0,1)
+    Time=295000: PC=0x04, Inst=0x00011100 (sll $2,$1,4)
+    Time=395000: PC=0x08, Inst=0x00411821 (addu $3,$2,$1)
+    Time=495000: PC=0x0C, Inst=0x00022082 (srl $4,$2,2)
+    ...
+\end{verbatim}
+
+
+可以看到之前是两周期的变成了7个周期，其具体为：
+
+\begin{itemize}
+    \item AXI Master状态转换：2周期
+    \item AXI握手：1周期
+    \item AXI Slave读RAM：1周期
+    \item 数据传输：1周期
+    \item 流水线锁存：2周期
+\end{itemize}
+
+流水线的效率反而更低了。但可能我认为扩展性应该会好一些，因为之后的cache等等也要加上去。
+
+
+\subsection{cpu\_5\_valid信号变化}
+
+下面我想分析我自己写的这个信号：\texttt{cpu\_5\_valid} 是一个32位的流水线状态指示信号，其编码方式如下。
+
+\begin{lstlisting}[columns=fullflexible,frame=shadowbox]
+assign cpu_5_valid = {12'd0,           // [31:20] 保留位
+                      {4{IF_valid}},   // [19:16] IF级有效
+                      {4{ID_valid}},   // [15:12] ID级有效
+                      {4{EXE_valid}},  // [11:8]  EXE级有效
+                      {4{MEM_valid}},  // [7:4]   MEM级有效
+                      {4{WB_valid}}};  // [3:0]   WB级有效
+\end{lstlisting}
+
+从波形图中可以清晰观察到流水线的\textbf{充填过程}（Pipeline Filling）：
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1.0\textwidth]{img/cp_valid.png}
+    \caption{流水线充填过程波形图}
+\end{figure}
+
+\subsubsection{信号变化分析}
+
+\textbf{1. 初始状态（t=290ns-300ns）}
+\begin{itemize}
+    \item \texttt{cpu\_5\_valid = 0x000F0000}
+    \item 解析：仅IF级有效（\texttt{IF\_valid=F}，其余为0）
+    \item 说明：第一条指令进入取指阶段，后续流水级均空闲
+\end{itemize}
+
+\textbf{2. 第一条指令推进（t=300ns-310ns）}
+\begin{itemize}
+    \item \texttt{cpu\_5\_valid = 0x000FF000}
+    \item 解析：IF和ID级同时有效
+    \item 说明：第一条指令（\texttt{PC=0x04, Inst=0x24010001}）进入ID级译码，同时第二条指令进入IF级
+\end{itemize}
+
+\textbf{3. 流水线继续充填（t=310ns-330ns）}
+\begin{itemize}
+    \item \texttt{cpu\_5\_valid = 0x000F0F00}（t≈315ns）
+    \item 解析：IF和EXE级有效，ID级已空
+    \item 说明：第一条指令进入执行阶段，流水线出现\textbf{气泡}（bubble）
+    
+    \item \texttt{cpu\_5\_valid = 0x000F00F0}（t≈325ns）
+    \item 解析：IF和MEM级有效
+    \item 说明：第一条指令进入访存阶段
+    
+    \item \texttt{cpu\_5\_valid = 0x000F000F}（t≈335ns）
+    \item 解析：IF和WB级有效
+    \item 说明：第一条指令进入写回阶段
+\end{itemize}
+
+\textbf{4. 稳定运行阶段（t>340ns）}
+\begin{itemize}
+    \item \texttt{cpu\_5\_valid = 0x000F0000}（周期性变化）
+    \item 说明：由于AXI访存延迟，流水线未能达到理想的5级满载状态
+    \item 观察到MEM级的PC停留在\texttt{0x00000004}较长时间（高亮显示）
+    \item 表明该指令在MEM阶段等待AXI事务完成
+\end{itemize}
+
+\subsubsection{关键现象解读}
+
+\textbf{流水线气泡（Pipeline Bubble）}
+
+从\texttt{cpu\_5\_valid}的跳变可以看出，流水线并非连续满载，而是存在明显的气泡：
+\begin{itemize}
+    \item 从\texttt{0x000FF000}（IF+ID）直接跳到\texttt{0x000F0F00}（IF+EXE），跳过了完整的3级同时有效状态
+    \item 原因：\textbf{AXI取指延迟}导致下一条指令无法及时进入流水线
+\end{itemize}
+
+\textbf{MEM级停顿}
+
+波形中MEM\_pc长时间保持\texttt{0x00000004}：
+\begin{itemize}
+    \item 说明该指令为\textbf{访存指令}（load/store）
+    \item MEM级等待数据AXI Master完成总线事务
+    \item 此时\texttt{MEM\_allow=0}，阻塞了后续指令的推进
+\end{itemize}
+
+\newpage
+
+\subsection{AXI指令总线信号分析}
+
+从波形图中可以观察到指令AXI Master的关键信号行为，这些信号反映了CPU取指过程中的AXI总线交互细节。
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{img/AXI详细信号.png}
+    \caption{AXI详细信号}
+\end{figure}
+
+\subsubsection{M\_AXI\_INSTR\_AWADDR[31:0] - 读地址信号}
+
+\textbf{信号特征：}
+\begin{itemize}
+    \item 波形显示地址按\textbf{字对齐}递增：\texttt{0x04 → 0x08 → 0x0C → 0x10}
+    \item 每次取指发起一个新的读地址请求
+    \item 地址递增步长为4字节（32位指令宽度）
+\end{itemize}
+
+\textbf{时序关系：}
+\begin{itemize}
+    \item 地址变化领先于指令数据到达约50-70ns
+    \item 例如：\texttt{AWADDR=0x08}时刻（t≈350ns），对应的指令\texttt{0x00011100}在约400ns时出现在\texttt{IF\_inst}
+    \item 说明从地址发出到数据返回经历了完整的AXI读事务周期
+\end{itemize}
+
+\textbf{与流水线PC的对应关系：}
+\begin{itemize}
+    \item \texttt{M\_AXI\_INSTR\_AWADDR}总是与\texttt{IF\_pc}保持同步
+    \item 表明Fetch模块的PC值正确传递给AXI Master
+    \item 地址连续性验证了流水线取指的正确性
+\end{itemize}
+
+\subsubsection{M\_AXI\_INSTR\_RVALID - 读数据有效信号}
+
+\textbf{信号特征：}
+\begin{itemize}
+    \item 表现为\textbf{周期性脉冲}，每个脉冲对应一次成功的指令读取
+    \item 脉冲宽度约1-2个时钟周期
+    \item 脉冲间隔约100ns，与取指周期一致
+\end{itemize}
+
+\textbf{AXI握手分析：}
+\begin{lstlisting}[columns=fullflexible,frame=shadowbox]
+// AXI读数据通道握手条件
+读数据传输成功 = RVALID & RREADY
+\end{lstlisting}
+
+从波形可以看出：
+\begin{itemize}
+    \item \texttt{RVALID}拉高后，需要等待\texttt{RREADY}同时为高才完成握手
+    \item 每次\texttt{RVALID}脉冲后，\texttt{IF\_inst}立即更新为新的指令数据
+    \item 例如：t≈300ns处\texttt{RVALID}有效，\texttt{IF\_inst}更新为\texttt{0x24010001}
+\end{itemize}
+
+\textbf{与cpu\_5\_valid的关联：}
+\begin{itemize}
+    \item \texttt{RVALID}有效时，\texttt{cpu\_5\_valid}中IF级标志保持有效
+    \item 说明取指模块正确响应了AXI Slave返回的数据
+    \item 验证了\texttt{axi\_done}信号与\texttt{RVALID}的逻辑关系
+\end{itemize}
+
+\subsubsection{M\_AXI\_INSTR\_RREADY - 读数据准备信号}
+
+\textbf{信号特征：}
+\begin{itemize}
+    \item 与\texttt{RVALID}时序\textbf{紧密配合}，形成握手对
+    \item 波形显示\texttt{RREADY}几乎总是在\texttt{RVALID}之前或同时拉高
+    \item 说明CPU端（Master）始终准备好接收指令数据
+\end{itemize}
+
+\textbf{实现分析：}
+
+在实现中，\texttt{RREADY}被设置为常高：
+
+\begin{lstlisting}[columns=fullflexible,frame=shadowbox]
+// AXI Master 中的实现
+.user_rready(1'b1)  // 指令读取通道永远ready
+\end{lstlisting}
+
+
+\textbf{握手时序验证：}
+\begin{itemize}
+    \item 从波形看，每次\texttt{RVALID \& RREADY}同时为高时
+    \item \texttt{IF\_inst}准确更新，PC递增
+    \item 流水线推进，\texttt{cpu\_5\_valid}变化
+    \item 完整验证了AXI读数据通道的正确性
+\end{itemize}
+
+\subsubsection{M\_AXI\_INSTR\_BRESP[1:0] - 写响应信号}
+
+\textbf{信号特征：}
+\begin{itemize}
+    \item 波形显示该信号始终为\texttt{0}（即\texttt{2'b00 = OKAY}）
+    \item 在整个仿真过程中无变化
+\end{itemize}
+
+\textbf{原因分析：}
+
+指令AXI接口是\textbf{只读通道}，因此写响应信号不会被使用：
+
+\begin{lstlisting}[columns=fullflexible,frame=shadowbox]
+// 指令AXI Master配置
+.user_rw(1'b1),  // 固定为读操作
+\end{lstlisting}
+
+\begin{itemize}
+    \item \texttt{BRESP}属于AXI\textbf{写响应通道}（B通道）
+    \item 取指只使用\textbf{读地址通道}（AR）和\textbf{读数据通道}（R）
+    \item 写地址（AW）、写数据（W）、写响应（B）三通道在指令总线中未激活
+    \item \texttt{BRESP=0}表示默认的OKAY状态，符合协议要求
+\end{itemize}
+
+\textbf{对比：数据AXI总线}
+
+与之相对应，数据AXI Master需要支持store指令，因此：
+\begin{itemize}
+    \item 数据总线的\texttt{BRESP}会在store操作时产生有效响应
+    \item 波形中如果有store指令执行，会看到\texttt{M\_AXI\_DATA\_BRESP}的变化
+    \item 验证了指令总线和数据总线的\textbf{功能分离}设计/实现
+\end{itemize}
+
+\subsubsection{AXI信号时序总结}
+
+通过对这四个关键信号的分析，可以总结出完整的AXI取指时序流程：
+
+\begin{enumerate}
+    \item \textbf{地址阶段}（AR通道）：
+    \begin{itemize}
+        \item Fetch模块发起请求，\texttt{AWADDR}更新为当前PC
+        \item AXI Master进入读地址状态，发送\texttt{ARVALID}（波形中未显示）
+        \item Slave响应\texttt{ARREADY}，完成地址握手
+    \end{itemize}
+    
+    \item \textbf{数据阶段}（R通道）：
+    \begin{itemize}
+        \item 经过若干周期延迟（Slave从RAM读取）
+        \item \texttt{RVALID}拉高，指令数据同步输出
+        \item CPU端\texttt{RREADY}已准备好，立即完成握手
+        \item \texttt{IF\_inst}更新，\texttt{axi\_done}有效
+    \end{itemize}
+    
+    \item \textbf{流水线推进}：
+    \begin{itemize}
+        \item \texttt{IF\_over}置1，通知下一级
+        \item PC递增+4，准备下一次取指
+        \item \texttt{cpu\_5\_valid}变化，指令进入ID级
+    \end{itemize}
+\end{enumerate}
+
+从波形的AXI信号可以清楚看出，每个取指周期严格遵循上述流程，验证了AXI总线与CPU流水线的正确集成。
+
+\section{总结}
+
+\subsection{实验成果}
+
+\begin{enumerate}
+    \item 成功实现了符合AXI4协议的Master和Slave模块
+    \item 将AXI总线集成到五级流水CPU中
+    \item 解决了多个复杂的时序和握手问题
+    \item 实现了完整的指令取指和数据访存通路
+\end{enumerate}
+
+\subsection{关键技术点}
+
+\begin{itemize}
+    \item \textbf{握手协议}：AXI的VALID/READY双向握手机制
+    \item \textbf{突发传输}：理解ARLEN/AWLEN与beat计数的关系
+    \item \textbf{流水线控制}：over/allow信号的协调
+    \item \textbf{状态机实现}：避免死锁，保证事务完整性
+\end{itemize}
+
+
+
+\label{sec:appendix}
+\section*{附录（补充说明）}
+\subsection{编址方法}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{img/硬编址.png}
+    \caption{硬编址}
+\end{figure}
+
+我把代码写死在了slave模块的初始模块中，最开始采取AI建议的一种加载方式，发现不行。这样的一个缺点是，因为我mem.v实例化的也是这个模块，导致了mem RAM初始的时候不是全0，不过这个不影响正常运行。
+
+
+
+\label{LastPage}
+\end{document}
