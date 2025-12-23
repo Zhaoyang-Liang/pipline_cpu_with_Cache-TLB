@@ -1,0 +1,98 @@
+\documentclass[a4paper]{article}
+\input{style/ch_xelatex.tex}
+\input{style/scala.tex}
+\renewcommand {\thefigure}{\thesection{}.\arabic{figure}}%图片按章标号
+
+
+% 代码样式设置（Verilog）
+\lstdefinelanguage{Verilog}{
+    morekeywords={module, endmodule, input, output, wire, reg, always, assign, if, else, begin, end, posedge, negedge, parameter, localparam, case, default},
+    sensitive=true,
+    morecomment=[l]{//},
+    morecomment=[n]{/*}{*/},
+    morestring=[b]"
+}
+
+\lstset{
+    language=Verilog,
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{blue}\bfseries,
+    commentstyle=\color{dkgreen},
+    stringstyle=\color{red},
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    stepnumber=1,
+    numbersep=5pt,
+    backgroundcolor=\color{gray!10},
+    frame=single,
+    breaklines=true,
+    breakatwhitespace=true,
+    tabsize=4,
+    showspaces=false,
+    showstringspaces=false
+}
+
+\usepackage{booktabs}
+\usepackage{geometry}
+\geometry{left=2.5cm,right=2.5cm,top=3cm,bottom=3cm}
+
+\begin{document}
+
+\renewcommand{\figurename}{图}
+\renewcommand{\contentsname}{目录}  
+\cfoot{\thepage\ of \pageref{LastPage}}
+\renewcommand{\abstractname}{\textbf{\Large 摘要}} 
+
+\begin{center}
+    \huge{\textbf{TLB Cache AXI总线的五级流水CPU}}
+\end{center}
+
+\begin{center}
+    \textbf{姓名}：\underline{梁朝阳 2311561} \quad
+    \textbf{专业}：\underline{密码科学与技术}
+\end{center}
+
+\tableofcontents
+
+\vspace*{1cm}
+
+\noindent{\Large\textbf{摘要}}
+
+\vspace{1em}
+
+
+\vspace{1em}
+\noindent\textbf{关键词：} MIPS、五级流水线、CP0、异常处理、中断、协处理器
+
+\newpage
+
+
+\section{实验要求}
+
+在现有的五级流水线CPU的基础上，增加TLB模块和cache模块。
+
+\begin{enumerate}
+    \item 本次实验是学期末综合实验，主要考察大家对TLB和cache的理解和应用，大家根据自己的能力和时间往后做即可，不强制要去全部功能都做出来。
+    \item TLB部分推荐完成TLB模块设计和TLB相关指令和CP0寄存器部分，例外支持部分大家自己把握。
+    \item Cache部分至少设计出ICache和DCache，并尝试在CPU中集成测试，其他部分大家自己把握。
+\end{enumerate}
+
+\section{实验原理与设计}
+
+\subsection{TLB模块设计}
+
+\subsubsection{TLB基础概念}
+
+
+
+
+
+\subsection{Cache模块设计}
+
+
+\section{实验结果}
+
+\section{实验总结}
+\label{LastPage}
+
+\end{document}
