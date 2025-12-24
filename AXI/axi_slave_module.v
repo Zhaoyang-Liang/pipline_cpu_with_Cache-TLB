@@ -94,29 +94,16 @@ integer j;
 initial begin
     for(j = 0; j < C_S_RAM_DEPTH; j = j + 1) begin
         case(j)
-            0:  ram[j] = 32'h24010001;
-            1:  ram[j] = 32'h00011100;
-            2:  ram[j] = 32'h00411821;
-            3:  ram[j] = 32'h00022082;
-            4:  ram[j] = 32'h28990005;
-            5:  ram[j] = 32'h0721000E;
-            6:  ram[j] = 32'h00642823;
-            7:  ram[j] = 32'hAC050014;
-            8:  ram[j] = 32'h00A23027;
-            9:  ram[j] = 32'h00C33825;
-            10: ram[j] = 32'h00E64026;
-            11: ram[j] = 32'h11030002;
-            12: ram[j] = 32'hAC08001C;
-            13: ram[j] = 32'h0022482A;
-            14: ram[j] = 32'h8C0A001C;
-            15: ram[j] = 32'h15450002;
-            16: ram[j] = 32'h00415824;
-            17: ram[j] = 32'hAC0B001C;
-            18: ram[j] = 32'h0C000026;
-            19: ram[j] = 32'hAC040010;
-            20: ram[j] = 32'h3C0C000C;
-            21: ram[j] = 32'h004CD007;
-            22: ram[j] = 32'h275B0044;
+            // D$ miss: lw $t3, 0x0100($zero)
+            0:  ram[j] = 32'h8C0B0100;
+            // TLB miss setup: addiu $t0, $zero, 0x4000
+            1:  ram[j] = 32'h24084000;
+            // data for store: addiu $t1, $zero, 0x1234
+            2:  ram[j] = 32'h24091234;
+            // TLBS: sw $t1, 0($t0)
+            3:  ram[j] = 32'hAD090000;
+            // TLBL: lw $t2, 0($t0)
+            4:  ram[j] = 32'h8D0A0000;
             default: ram[j] = 32'h00000000; // nop
         endcase
     end
@@ -124,9 +111,9 @@ initial begin
     // 调试：打印前几条指令
     #1; // 等待初始化完成
     $display("========== AXI_SLAVE RAM Initialization ==========");
-    $display("ram[0] = %h (expect 24010001)", ram[0]);
-    $display("ram[1] = %h (expect 00011100)", ram[1]);
-    $display("ram[2] = %h (expect 00411821)", ram[2]);
+    $display("ram[0] = %h (expect 8C0B0100)", ram[0]);
+    $display("ram[1] = %h (expect 24084000)", ram[1]);
+    $display("ram[2] = %h (expect 24091234)", ram[2]);
     $display("==================================================");
 end
 
