@@ -65,6 +65,8 @@
 \vspace{1em}
 本文在已有的AXI总线的五级流水 CPU基础上，完成TLB与I/D Cache的最简实现与集成。TLB采用4项全相联固定映射，支持TLBL/TLBS/Modify等异常；I-Cache与D-Cache均为直映结构、行大小16B，其中I-Cache只读，D-Cache采用写直达+写分配并支持字节访问。通过在MEM阶段生成访存异常并在WB阶段统一仲裁写入CP0，实现了地址异常与TLB异常的正确处理。最后仿真验证模块正确。
 
+最后报告中没有展示完整的代码，所有的代码让我一起上传到github中了：{}\url{https://github.com/Zhaoyang-Liang/pipline_cpu_with_Cache-TLB}
+里面包含了所有内容。
 
 \vspace{1em}
 \noindent\textbf{关键词：} 五级流水CPU、TLB、I/DCache
@@ -121,12 +123,11 @@
 
 TLB（Translation Lookaside Buffer）用于加速虚拟地址到物理地址的转换。流水线访存时先用虚拟页号（VPN）在TLB中查找，如果命中则得到物理页号（PPN）并拼接页内偏移形成物理地址；若未命中或表项无效则触发TLB相关异常。
 
-\subsubsection{TLB接口与关键信号}
+\subsubsection{代码部分：TLB接口与关键信号}
 TLB作为MEM阶段前置地址转换单元，接口只保留最小必要信号，输入为访存请求与虚拟地址，输出为物理地址与异常信息：
 \begin{lstlisting}[language=Verilog]
 module tlb_simple(
-    input             clk,
-    input             resetn,
+    input             clk, input             resetn,
     input             req_valid,
     input      [31:0] vaddr,
     input             is_store,
@@ -140,10 +141,30 @@ module tlb_simple(
 \end{lstlisting}
 其中，\textbf{req\_valid}在MEM阶段且为load/store时拉高，\textbf{vaddr}为EXE计算出的虚拟地址，\textbf{is\_store}用于区分TLBL/TLBS与Modify异常。TLB命中输出\textbf{paddr}，异常时输出\textbf{exc\_code}并带上\textbf{badvaddr}。
 
+\subsubsection{代码部分：TLB查找输出}
+TLB逻辑核心是“按VPN匹配并给出paddr/异常码”，代码如下（精简版）：
+\begin{lstlisting}[language=Verilog]
+// tlb_simple.v (simplified)
+always @(*) begin
+    hit = 1'b0; exc_valid = 1'b0; exc_code = 5'd0; paddr = vaddr;
+    for (i = 0; i < TLB_ENTRIES; i = i + 1) begin
+        if (tlb_valid[i] && tlb_vpn[i] == vaddr[31:12]) begin
+            hit   = 1'b1;
+            paddr = {tlb_ppn[i], vaddr[11:0]};
+            if (!tlb_dirty[i] && is_store) begin
+                exc_valid = 1'b1; exc_code = 5'd1; // Modify
+            end
+        end
+    end
+    if (!hit) begin
+        exc_valid = 1'b1; exc_code = is_store ? 5'd3 : 5'd2; // TLBS/TLBL
+    end
+end
+\end{lstlisting}
+
 
 \paragraph{加了TLB后的一大改变}
 之前的AXI接到的mem我只写了为256个word。实际访问时仅使用地址低位作为索引，高位地址会发生回绕（alias），因此逻辑地址范围大于物理存储容量时会映射到同一片存储区域。（简单来说就是直接把高位扔了，现在TLB可以在某种意义上实现一个简单的地址转换）。
-
 
 \newpage
 
@@ -173,7 +194,21 @@ module tlb_simple(
     \item D-Cache采用直映结构，4行，行大小16B（4个word），索引与标记划分同I-Cache。写策略为写直达+写分配：store未命中先refill，再更新cache行并发起单次AXI写；load未命中则refill后返回数据。支持字/字节访问，字节写通过读-改-写合并实现，LB/LBU按符号/无符号扩展返回。
 \end{enumerate}
 
-\subsubsection{Cache接口与关键信号}
+
+
+\subsubsection{I/D-Cache区别}
+
+I-Cache仅服务取指路径，属于只读缓存。取指地址先在I-Cache中查找，命中则直接返回指令；未命中则触发一次行填充（refill），从指令存储器按cache行大小进行burst读入，再返回所需指令。由于取指不涉及写操作，I-Cache不需要脏位与写回策略，实现更简单、时序更稳定。
+
+
+D-Cache用于数据访存，支持读写操作。对load命中直接返回数据；对store命中先更新cache行，再根据写策略写到主存。未命中时需要行填充，之后再完成当前读/写。为了简化教学实现，本设计采用直映结构与写直达策略，避免复杂的替换与写回。总结可以为：
+
+\begin{enumerate}
+    \item I‑Cache 只读，只做取指；不需要写策略、字节合并、写直达
+    \item D‑Cache 读写都要处理，包含写直达、写分配、LB/LBU/SB 的字节处理
+\end{enumerate}
+
+\subsubsection{代码部分：Cache接口与关键信号}
 I-Cache为只读接口，采用req/resp握手，并通过AXI读通道完成refill：
 \begin{lstlisting}[language=Verilog]
 module icache_simple(
@@ -219,25 +254,23 @@ module dcache_simple(
 \end{lstlisting}
 I/D-Cache均采用直映结构：\textbf{index=addr[5:4]}、\textbf{tag=addr[31:6]}、\textbf{offset=addr[3:0]}。I-Cache只读、无写策略；D-Cache则包含写直达与写分配逻辑，并在store时触发AXI写事务。
 
+\subsection{AXI与Cache连接代码说明}
+本设计将I-Cache与D-Cache分别连接到两路AXI主接口：I-Cache只使用读通道，D-Cache使用读+写通道。核心连接在\texttt{pipeline\_cpu.v}中完成（精简版）：
+\begin{lstlisting}[language=Verilog]
+// I-Cache -> AXI (instruction)
+assign instr_user_start = icache_axi_start;
+assign instr_user_addr  = icache_axi_addr;
+assign instr_user_len   = icache_axi_len;
+assign icache_axi_done  = instr_user_done;
 
+// D-Cache/MEM -> AXI (data)
+assign data_user_start  = mem_axi_start;
+assign data_user_addr   = mem_axi_addr;
+assign data_user_len    = mem_axi_len;
+assign mem_axi_done     = data_user_done;
+\end{lstlisting}
+含义是：取指与访存形成双通道，互不干扰；I-Cache只在miss时发起burst读，D-Cache则在miss或写直达时发起相应的读/写事务。
 
-
-
-\subsubsection{I/D-Cache区别}
-
-I-Cache仅服务取指路径，属于只读缓存。取指地址先在I-Cache中查找，命中则直接返回指令；未命中则触发一次行填充（refill），从指令存储器按cache行大小进行burst读入，再返回所需指令。由于取指不涉及写操作，I-Cache不需要脏位与写回策略，实现更简单、时序更稳定。
-
-
-D-Cache用于数据访存，支持读写操作。对load命中直接返回数据；对store命中先更新cache行，再根据写策略写到主存。未命中时需要行填充，之后再完成当前读/写。为了简化教学实现，本设计采用直映结构与写直达策略，避免复杂的替换与写回。总结可以为：
-
-
-
-
-
-\begin{enumerate}
-    \item I‑Cache 只读，只做取指；不需要写策略、字节合并、写直达
-    \item D‑Cache 读写都要处理，包含写直达、写分配、LB/LBU/SB 的字节处理
-\end{enumerate}
 
 \subsection{TLB与Cache例外支持}
 
@@ -327,7 +360,15 @@ assign wb_ex_code_no_int  = mem_ex_tlbl_wb ? 5'd2 :
 
 
 \subsection{D-Cache写直达示例（store）}
-以对地址\texttt{0x00000014}的store为例，D-Cache命中后先更新cache行，再通过AXI写直达主存：
+
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\linewidth]{img/Dc.png}
+
+\end{figure}
+
+另一个角度可以看display出来的详细信息，我在写代码的时候增加了display的调错信息，例如以对地址\texttt{0x00000014}的store为例，D-Cache命中后先更新cache行，再通过AXI写直达主存：
 \begin{lstlisting}[language=Verilog]
 TLB_LOOKUP: vaddr=00000014 ... hit=1 ... exc=0
 D$ REQ: addr=00000014 ... hit=1 is_store=1 size=10
@@ -350,10 +391,6 @@ PIPE_AXI_DATA: start rw=0 addr=00000014 len=1
     \caption{TLB命中和非命中}
 \end{figure}
 
-\subsection{地址对齐异常示例}
-LW/SW访问非4字节对齐地址时，在MEM阶段产生AdEL/AdES并抑制Cache/AXI访问，异常信息通过MEM\_WB\_bus送入WB仲裁。
-
-
 
 
 
@@ -370,7 +407,13 @@ D$ WRITE-DONE
 
 综合以上场景，仿真输出与预期一致，说明TLB、I/D-Cache与AXI接口集成正确。
 
+
+
+
+
+
 \section{实验总结}
+本次实验在原有五级流水CPU上完成了TLB与I/D Cache的最简集成，并通过AXI双通道实现指令与数据的并行访问。通过在MEM阶段统一产生访存异常、在WB阶段统一仲裁上报CP0，保证了TLB异常与对齐异常的正确优先级与处理路径。I-Cache采用只读直映结构，D-Cache采用写直达+写分配，既简化了控制，又能覆盖典型访存场景。仿真日志显示：取指/访存命中路径、miss回填路径、写直达时的流水暂停以及TLB异常上报均按设计运行。整体设计满足教学级“简单、稳定、可解释”的目标，也为后续扩展更复杂的替换策略、写回策略与TLB管理机制打下基础。
 \label{LastPage}
 
 \end{document}

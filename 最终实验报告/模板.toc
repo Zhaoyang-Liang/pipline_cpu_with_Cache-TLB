@@ -3,23 +3,23 @@
 \contentsline {section}{\numberline {2}实验原理与设计}{3}{section.2}%
 \contentsline {subsection}{\numberline {2.1}TLB模块}{3}{subsection.2.1}%
 \contentsline {subsubsection}{\numberline {2.1.1}TLB参数设计}{3}{subsubsection.2.1.1}%
-\contentsline {subsubsection}{\numberline {2.1.2}TLB接口与关键信号}{3}{subsubsection.2.1.2}%
+\contentsline {subsubsection}{\numberline {2.1.2}代码部分：TLB接口与关键信号}{3}{subsubsection.2.1.2}%
+\contentsline {subsubsection}{\numberline {2.1.3}代码部分：TLB查找输出}{4}{subsubsection.2.1.3}%
 \contentsline {paragraph}{加了TLB后的一大改变}{4}{section*.4}%
 \contentsline {subsection}{\numberline {2.2}Cache模块}{5}{subsection.2.2}%
 \contentsline {subsection}{\numberline {2.3}I/D-Cache 参数设计}{5}{subsection.2.3}%
-\contentsline {subsubsection}{\numberline {2.3.1}Cache接口与关键信号}{5}{subsubsection.2.3.1}%
-\contentsline {subsubsection}{\numberline {2.3.2}I/D-Cache区别}{6}{subsubsection.2.3.2}%
-\contentsline {subsection}{\numberline {2.4}TLB与Cache例外支持}{7}{subsection.2.4}%
-\contentsline {subsubsection}{\numberline {2.4.1}设计思路}{7}{subsubsection.2.4.1}%
-\contentsline {subsubsection}{\numberline {2.4.2}代码实现}{7}{subsubsection.2.4.2}%
+\contentsline {subsubsection}{\numberline {2.3.1}I/D-Cache区别}{5}{subsubsection.2.3.1}%
+\contentsline {subsubsection}{\numberline {2.3.2}代码部分：Cache接口与关键信号}{6}{subsubsection.2.3.2}%
+\contentsline {subsection}{\numberline {2.4}AXI与Cache连接代码说明}{7}{subsection.2.4}%
+\contentsline {subsection}{\numberline {2.5}TLB与Cache例外支持}{7}{subsection.2.5}%
+\contentsline {subsubsection}{\numberline {2.5.1}设计思路}{7}{subsubsection.2.5.1}%
+\contentsline {subsubsection}{\numberline {2.5.2}代码实现}{7}{subsubsection.2.5.2}%
 \contentsline {paragraph}{TLB异常判定（tlb\_simple.v）}{7}{section*.6}%
-\contentsline {paragraph}{MEM阶段异常生成与打包（mem.v）}{7}{section*.7}%
+\contentsline {paragraph}{MEM阶段异常生成与打包（mem.v）}{8}{section*.7}%
 \contentsline {paragraph}{WB阶段异常仲裁与CP0写入（wb.v）}{8}{section*.8}%
 \contentsline {section}{\numberline {3}实验结果}{9}{section.3}%
 \contentsline {subsection}{\numberline {3.1}I-Cache命中与未命中示例}{9}{subsection.3.1}%
 \contentsline {subsection}{\numberline {3.2}D-Cache写直达示例（store）}{9}{subsection.3.2}%
-\contentsline {subsection}{\numberline {3.3}字节访问示例（LB/LBU/SB）}{9}{subsection.3.3}%
-\contentsline {subsection}{\numberline {3.4}TLB命中与异常示例}{10}{subsection.3.4}%
-\contentsline {subsection}{\numberline {3.5}地址对齐异常示例}{10}{subsection.3.5}%
-\contentsline {subsection}{\numberline {3.6}流水暂停示例}{10}{subsection.3.6}%
-\contentsline {section}{\numberline {4}实验总结}{10}{section.4}%
+\contentsline {subsection}{\numberline {3.3}TLB命中与异常示例}{10}{subsection.3.3}%
+\contentsline {subsection}{\numberline {3.4}流水暂停示例}{10}{subsection.3.4}%
+\contentsline {section}{\numberline {4}实验总结}{11}{section.4}%
