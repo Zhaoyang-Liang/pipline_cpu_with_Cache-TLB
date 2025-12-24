@@ -99,9 +99,14 @@ module pipeline_cpu(
 );
 
 // FETCH AXI user signals
-wire        fetch_axi_start;
-// wire [31:0] fetch_addr;
-wire [31:0] fetch_axi_addr;
+wire        icache_req;
+wire [31:0] icache_addr;
+wire        icache_ready;
+wire        icache_resp_valid;
+wire [31:0] icache_inst;
+wire        icache_axi_start;
+wire [31:0] icache_axi_addr;
+wire [7:0]  icache_axi_len;
 
 
 // MEM AXI user signals
@@ -124,6 +129,12 @@ end
 wire instr_user_busy;
 wire instr_user_done;
 wire instr_user_rvalid;
+// debug for instr AXI
+always @(posedge clk) begin
+    if (icache_axi_start) begin
+        $display("PIPE_AXI_INSTR: start addr=%h len=%0d", icache_axi_addr, icache_axi_len);
+    end
+end
 wire [31:0] instr_user_rdata;
 
 axi_full_master #(
@@ -186,10 +197,10 @@ axi_full_master #(
     //---------------------------------------------------
     // USER 控制接口（Fetch 使用）
     //---------------------------------------------------
-    .user_start   (fetch_axi_start), 
+    .user_start   (icache_axi_start), 
     .user_rw      (1'b1),            // 固定为 read
-    .user_addr(fetch_axi_addr),      // fetch.v 中的 PC
-    .user_len     (8'd1),            // 每次读1个指令
+    .user_addr    (icache_axi_addr),      // fetch.v 中的 PC
+    .user_len     (icache_axi_len),            // 每次读1个指令
 
     .user_wdata   (32'd0),           // 不会用到
     .user_wvalid  (1'b0),
@@ -505,11 +516,11 @@ axi_full_master #(
         .IF_over   (IF_over   ),  // O, 1
         .IF_ID_bus (IF_ID_bus ),  // O, 64
 
-        .axi_start   (fetch_axi_start),
-        .axi_done    (instr_user_done),
-        .axi_rdata   (instr_user_rdata),
-        .axi_busy    (instr_user_busy),
-        .axi_addr(fetch_axi_addr),
+        .icache_req   (icache_req),
+        .icache_addr  (icache_addr),
+        .icache_ready (icache_ready),
+        .icache_resp_valid (icache_resp_valid),
+        .icache_inst  (icache_inst),
         
         //5级流水新增接口
         .exc_bus   (exc_bus   ),  // I, 32
@@ -518,6 +529,23 @@ axi_full_master #(
         .IF_pc     (IF_pc     ),  // O, 32
         .IF_inst   (IF_inst   )   // O, 32
     );
+    icache_simple ICache_module(
+        .clk        (clk),
+        .resetn     (resetn),
+        .req_valid  (icache_req),
+        .req_addr   (icache_addr),
+        .req_ready  (icache_ready),
+        .resp_valid (icache_resp_valid),
+        .resp_inst  (icache_inst),
+        .axi_start  (icache_axi_start),
+        .axi_addr   (icache_axi_addr),
+        .axi_len    (icache_axi_len),
+        .axi_rdata  (instr_user_rdata),
+        .axi_rvalid (instr_user_rvalid),
+        .axi_done   (instr_user_done),
+        .axi_busy   (instr_user_busy)
+    );
+
 
     // inst = axi_rdata;
     // IF_over = axi_done;

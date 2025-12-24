@@ -312,14 +312,14 @@ module tb;
 
     // Monitor important signals
     initial begin
-        $monitor("Time=%0t | PC=%h Inst=%h | IF_v=%b IF_over=%b IF_allow=%b | ID_v=%b ID_over=%b ID_allow=%b | EXE_v=%b EXE_allow=%b | MEM_v=%b MEM_allow=%b | WB_v=%b WB_allow=%b | axi_start=%b axi_done=%b axi_busy=%b | fetch_state=%d", 
+        $monitor("Time=%0t | PC=%h Inst=%h | IF_v=%b IF_over=%b IF_allow=%b | ID_v=%b ID_over=%b ID_allow=%b | EXE_v=%b EXE_allow=%b | MEM_v=%b MEM_allow=%b | WB_v=%b WB_allow=%b | ic_start=%b ic_done=%b ic_busy=%b | fetch_state=%d", 
                  $time, IF_pc, IF_inst, 
                  uut.IF_valid, uut.IF_over, uut.IF_allow_in,
                  uut.ID_valid, uut.ID_over, uut.ID_allow_in,
                  uut.EXE_valid, uut.EXE_allow_in,
                  uut.MEM_valid, uut.MEM_allow_in,
                  uut.WB_valid, uut.WB_allow_in,
-                 uut.IF_module.axi_start, uut.IF_module.axi_done, uut.IF_module.axi_busy,
+                 uut.icache_axi_start, uut.instr_user_done, uut.instr_user_busy,
                  uut.IF_module.current_state);
     end
 

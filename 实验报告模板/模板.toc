@@ -1,0 +1,12 @@
+\babel@toc {UKenglish}{}\relax 
+\contentsline {section}{\numberline {1}实验要求}{2}{section.1}%
+\contentsline {section}{\numberline {2}CPU全局设计图}{2}{section.2}%
+\contentsline {section}{\numberline {3}实验原理与设计}{3}{section.3}%
+\contentsline {subsection}{\numberline {3.1}TLB模块}{3}{subsection.3.1}%
+\contentsline {subsubsection}{\numberline {3.1.1}TLB参数设计}{3}{subsubsection.3.1.1}%
+\contentsline {paragraph}{加了TLB后的一大改变}{3}{section*.3}%
+\contentsline {subsection}{\numberline {3.2}Cache模块}{4}{subsection.3.2}%
+\contentsline {subsection}{\numberline {3.3}I/D-Cache 参数设计}{4}{subsection.3.3}%
+\contentsline {subsubsection}{\numberline {3.3.1}I/D-Cache区别}{4}{subsubsection.3.3.1}%
+\contentsline {section}{\numberline {4}实验结果}{5}{section.4}%
+\contentsline {section}{\numberline {5}实验总结}{5}{section.5}%
