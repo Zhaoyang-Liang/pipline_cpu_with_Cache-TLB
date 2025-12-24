@@ -10,7 +10,7 @@
 `define IF_ID_BUS_WIDTH     64
 `define ID_EXE_BUS_WIDTH    168
 `define EXE_MEM_BUS_WIDTH   155
-`define MEM_WB_BUS_WIDTH    153
+`define MEM_WB_BUS_WIDTH    156
 `define JBR_BUS_WIDTH       33
 `define EXC_BUS_WIDTH       33
 
@@ -109,8 +109,15 @@ wire        mem_axi_start;
 wire        mem_axi_rw;       // 1=load, 0=store
 wire [31:0] mem_axi_addr;
 wire [31:0] mem_axi_wdata;
+wire [7:0]  mem_axi_len;
 wire        mem_axi_wvalid;
 wire        mem_axi_wready;
+// debug for data AXI
+always @(posedge clk) begin
+    if (mem_axi_start) begin
+        $display("PIPE_AXI_DATA: start rw=%b addr=%h len=%0d", mem_axi_rw, mem_axi_addr, mem_axi_len);
+    end
+end
 // --------------------------------
 // AXI MASTER FOR INSTRUCTION FETCH
 //-------------------------------------------------------
@@ -268,7 +275,7 @@ axi_full_master #(
     .user_start   (mem_axi_start),
     .user_rw      (mem_axi_rw),        // 0 = store, 1 = load
     .user_addr    (mem_axi_addr),
-    .user_len     (8'd1),
+    .user_len     (mem_axi_len),
 
     .user_wdata   (mem_axi_wdata),
     .user_wvalid  (mem_axi_wvalid),
@@ -389,13 +396,13 @@ axi_full_master #(
     wire [ 63:0] IF_ID_bus;   // IF->ID级总线
     wire [167:0] ID_EXE_bus;  // ID->EXE级总线
     wire [154:0] EXE_MEM_bus; // EXE->MEM级总线
-    wire [152:0] MEM_WB_bus;  // MEM->WB级总线
+    wire [155:0] MEM_WB_bus;  // MEM->WB级总线
     
     //锁存以上总线信号
     reg [ 63:0] IF_ID_bus_r;
     reg [167:0] ID_EXE_bus_r;
     reg [154:0] EXE_MEM_bus_r;
-    reg [152:0] MEM_WB_bus_r;
+    reg [155:0] MEM_WB_bus_r;
     
     //IF到ID的锁存信号
     always @(posedge clk)
@@ -581,7 +588,7 @@ axi_full_master #(
         // .dm_wen       (dm_wen       ),  // O, 4 
         // .dm_wdata     (dm_wdata     ),  // O, 32
         .MEM_over     (MEM_over     ),  // O, 1
-        .MEM_WB_bus   (MEM_WB_bus   ),  // O, 118/153
+        .MEM_WB_bus   (MEM_WB_bus   ),  // O, 156
         
         //5级流水新增接口
         .MEM_allow_in (MEM_allow_in ),  // I, 1
@@ -593,9 +600,11 @@ axi_full_master #(
         .axi_start   (mem_axi_start),
         .axi_rw      (mem_axi_rw),
         .axi_addr    (mem_axi_addr),
+        .axi_len     (mem_axi_len),
         .axi_wdata   (mem_axi_wdata),
 
         .axi_rdata   (data_user_rdata),
+        .axi_rvalid  (data_user_rvalid),
         .axi_done    (data_user_done),
         .axi_busy    (data_user_busy),
         .axi_wvalid  (mem_axi_wvalid),
@@ -607,7 +616,7 @@ axi_full_master #(
  
     wb WB_module(                     // 写回级
         .WB_valid    (WB_valid    ),  // I, 1
-        .MEM_WB_bus_r(MEM_WB_bus_r),  // I, 153
+        .MEM_WB_bus_r(MEM_WB_bus_r),  // I, 156
         .rf_wen      (rf_wen      ),  // O, 1
         .rf_wdest    (rf_wdest    ),  // O, 5
         .rf_wdata    (rf_wdata    ),  // O, 32

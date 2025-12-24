@@ -7,7 +7,7 @@
 //*************************************************************************
 module wb(                       // 写回级
     input          WB_valid,     // 写回级有效
-    input  [152:0] MEM_WB_bus_r, // MEM->WB总线
+    input  [155:0] MEM_WB_bus_r, // MEM->WB总线
     output         rf_wen,       // 寄存器写使能
     output [  4:0] rf_wdest,     // 寄存器写地址
     output [ 31:0] rf_wdata,     // 寄存器写数据
@@ -59,6 +59,9 @@ module wb(                       // 写回级
     wire [31:0] pc;    
     wire        mem_ex_adel_wb;
     wire        mem_ex_ades_wb;
+    wire        mem_ex_tlbl_wb;
+    wire        mem_ex_tlbs_wb;
+    wire        mem_ex_mod_wb;
     wire [31:0] mem_badvaddr_wb;
     wire        brk_wb;
     assign {wen,
@@ -77,6 +80,9 @@ module wb(                       // 写回级
             eret,
             mem_ex_adel_wb,
             mem_ex_ades_wb,
+            mem_ex_tlbl_wb,
+            mem_ex_tlbs_wb,
+            mem_ex_mod_wb,
             mem_badvaddr_wb,
             pc} = MEM_WB_bus_r;
 //-----{MEM->WB总线}end
@@ -207,17 +213,28 @@ module wb(                       // 写回级
    // 异常仲裁逻辑（优先级：中断 > 地址错 > BREAK > SYSCALL）
    // 注意：中断由CP0模块检测，通过c0_int信号传递
    // 由于cp0_int在CP0实例化后才可用，这里先计算非中断异常，然后在CP0实例化后合并中断
-   assign wb_badvaddr_valid   = (mem_ex_adel_wb | mem_ex_ades_wb);
+   assign wb_badvaddr_valid   = (mem_ex_tlbl_wb | mem_ex_tlbs_wb | mem_ex_mod_wb |
+                                  mem_ex_adel_wb | mem_ex_ades_wb);
    assign wb_badvaddr         = mem_badvaddr_wb;
    
    // 非中断异常（地址错、BREAK、SYSCALL）
    wire        wb_ex_valid_no_int;
    wire [4:0]  wb_ex_code_no_int;
-   assign wb_ex_valid_no_int  = (mem_ex_adel_wb | mem_ex_ades_wb | brk_wb | syscall) ? WB_valid : 1'b0;
-   assign wb_ex_code_no_int    = mem_ex_adel_wb ? 5'd4 :
+   assign wb_ex_valid_no_int  = (mem_ex_tlbl_wb | mem_ex_tlbs_wb | mem_ex_mod_wb |
+                                mem_ex_adel_wb | mem_ex_ades_wb | brk_wb | syscall) ? WB_valid : 1'b0;
+   assign wb_ex_code_no_int    = mem_ex_tlbl_wb ? 5'd2 :
+                                mem_ex_tlbs_wb ? 5'd3 :
+                                mem_ex_mod_wb  ? 5'd1 :
+                                mem_ex_adel_wb ? 5'd4 :
                                 mem_ex_ades_wb ? 5'd5 :
                                 brk_wb ? 5'd9 :
                                 5'd8; // SYSCALL
+
+   always @(posedge clk) begin
+       if (wb_ex_valid) begin
+           $display("WB_EXC_ARB: code=%0d badvaddr=%h pc=%h", wb_ex_code, wb_badvaddr, pc);
+       end
+   end
    
    cp0 cp0_module(
        .clk         (clk         ),  // I, 1

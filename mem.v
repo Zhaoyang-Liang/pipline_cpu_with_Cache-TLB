@@ -2,7 +2,7 @@
 `define IF_ID_BUS_WIDTH     64
 `define ID_EXE_BUS_WIDTH    167
 `define EXE_MEM_BUS_WIDTH   155
-`define MEM_WB_BUS_WIDTH    153
+`define MEM_WB_BUS_WIDTH    156
 `define JBR_BUS_WIDTH       33
 `define EXC_BUS_WIDTH       33
 
@@ -15,21 +15,23 @@ module mem(
     // ===============================
     // AXI USER INTERFACE
     // ===============================
-    output reg         axi_start,      // ·¢Æğ AXI ÊÂÎñ (1 ¸öÖÜÆÚÂö³å)
-    output reg         axi_rw,         // 1 = load, 0 = store
-    output reg [31:0]  axi_addr,       // ¶Á/Ğ´µØÖ·
-    output reg [31:0]  axi_wdata,      // store Êı¾İ
-    output reg         axi_wvalid,     // Ğ´Êı¾İÓĞĞ§
-    input              axi_wready,     // Ğ´Êı¾İÎÕÊÖ
-    input      [31:0]  axi_rdata,      // ¶ÁÊı¾İ
-    input              axi_done,       // AXI ÊÂÎñÍê³É
-    input              axi_busy,       // AXI Ã¦
+    output             axi_start,      // å‘èµ· AXI äº‹åŠ¡ (1 ä¸ªå‘¨æœŸè„‰å†²)
+    output             axi_rw,         // 1 = load, 0 = store
+    output     [31:0]  axi_addr,       // è¯»/å†™åœ°å€
+    output     [7:0]   axi_len,        // bursté•¿åº¦
+    output     [31:0]  axi_wdata,      // store æ•°æ®
+    output             axi_wvalid,     // å†™æ•°æ®æœ‰æ•ˆ
+    input              axi_wready,     // å†™æ•°æ®æ¡æ‰‹
+    input      [31:0]  axi_rdata,      // è¯»æ•°æ®
+    input              axi_rvalid,     // è¯»æ•°æ®æœ‰æ•ˆ
+    input              axi_done,       // AXI äº‹åŠ¡å®Œæˆ
+    input              axi_busy,       // AXI å¿™
 
     // ===============================
     // pipeline interface
     // ===============================
     output             MEM_over,
-    output     [152:0] MEM_WB_bus,
+    output     [155:0] MEM_WB_bus,
     input              MEM_allow_in,
     output     [4 :0]  MEM_wdest,
     output     [31:0]  MEM_result,
@@ -38,7 +40,7 @@ module mem(
 );
 
     //---------------------------------------------
-    // ½â³ö EXE_MEM_bus_r
+    // è§£å‡º EXE_MEM_bus_r
     //---------------------------------------------
     wire [3 :0] mem_control;
     wire [31:0] store_data;
@@ -81,95 +83,127 @@ module mem(
     assign {inst_load, inst_store, ls_word, lb_sign} = mem_control;
 
     //---------------------------------------------
-    // ·¢Æğ AXI load/store
+    // åœ°å€ä¸å¼‚å¸¸æ£€æµ‹
     //---------------------------------------------
-    reg mem_valid_hold;
+    wire [31:0] vaddr = exe_result;
+    wire addr_unaligned = ls_word && (vaddr[1:0] != 2'b00);
+    wire mem_ex_adel = inst_load  && addr_unaligned;
+    wire mem_ex_ades = inst_store && addr_unaligned;
+
+    //---------------------------------------------
+    // TLB
+    //---------------------------------------------
+    wire        tlb_hit;
+    wire [31:0] tlb_paddr;
+    wire        tlb_exc_valid;
+    wire [ 4:0] tlb_exc_code;
+    wire        tlb_badvaddr_valid;
+    wire [31:0] tlb_badvaddr;
+
+    tlb_simple tlb_u (
+        .clk            (clk),
+        .resetn         (resetn),
+        .req_valid      (MEM_valid && (inst_load | inst_store)),
+        .vaddr          (vaddr),
+        .is_store       (inst_store),
+        .hit            (tlb_hit),
+        .paddr          (tlb_paddr),
+        .exc_valid      (tlb_exc_valid),
+        .exc_code       (tlb_exc_code),
+        .badvaddr_valid (tlb_badvaddr_valid),
+        .badvaddr       (tlb_badvaddr)
+    );
+
+    wire mem_ex_tlbl = tlb_exc_valid && (tlb_exc_code == 5'd2);
+    wire mem_ex_tlbs = tlb_exc_valid && (tlb_exc_code == 5'd3);
+    wire mem_ex_mod  = tlb_exc_valid && (tlb_exc_code == 5'd1);
+    wire mem_ex_any  = mem_ex_adel | mem_ex_ades | mem_ex_tlbl | mem_ex_tlbs | mem_ex_mod;
 
     always @(posedge clk) begin
-        if (!resetn)
-            mem_valid_hold <= 1'b0;
-        else if (MEM_allow_in)
-            mem_valid_hold <= 1'b0;
-        else if (MEM_valid)
-            mem_valid_hold <= 1'b1;
-    end
-
-    wire do_load  = MEM_valid && inst_load;
-    wire do_store = MEM_valid && inst_store;
-
-    //---------------------------------------------
-    // AXI handshake ¿ØÖÆ
-    //---------------------------------------------
-    reg axi_started;  // ±ê¼Çµ±Ç°MEM²Ù×÷ÊÇ·ñÒÑ·¢ÆğAXI
-    
-    always @(posedge clk) begin
-        if (!resetn) begin
-            axi_start  <= 1'b0;
-            axi_rw     <= 1'b0;
-            axi_addr   <= 32'b0;
-            axi_wdata  <= 32'b0;
-            axi_wvalid <= 1'b0;
-            axi_started <= 1'b0;
-        end
-        else begin
-            axi_start  <= 1'b0;
-            axi_wvalid <= 1'b0;
-            
-            // MEM¼¶ÔÊĞíĞÂÖ¸Áî½øÈëÊ±£¬Çå³ıÒÑ·¢Æğ±êÖ¾
-            if (MEM_allow_in)
-                axi_started <= 1'b0;
-
-            // ---------------- store ----------------
-            if (do_store && !axi_started) begin
-                axi_addr    <= exe_result;
-                axi_rw      <= 1'b0;        // Ğ´
-                axi_wdata   <= store_data;
-                axi_start   <= 1'b1;        // ·¢Æğ write
-                axi_started <= 1'b1;
-                
-                if (!axi_busy)
-                    axi_wvalid <= 1'b1;   // ·¢ËÍĞ´Êı¾İ
-            end
-
-            // ---------------- load ----------------
-            if (do_load && !axi_started) begin
-                axi_addr    <= exe_result;
-                axi_rw      <= 1'b1;        // ¶Á
-                axi_start   <= 1'b1;        // ·¢Æğ read
-                axi_started <= 1'b1;
-            end
+        if (MEM_valid && (inst_load | inst_store) && mem_ex_any) begin
+            $display("MEM_EXC: vaddr=%h adel=%b ades=%b tlbl=%b tlbs=%b mod=%b",
+                     vaddr, mem_ex_adel, mem_ex_ades, mem_ex_tlbl, mem_ex_tlbs, mem_ex_mod);
         end
     end
 
     //---------------------------------------------
-    // MEM_over£º
-    //  ·Ç·Ã´æÖ¸Áî£ºÁ¢¼´Íê³É£¨MEM_valid¼´±íÊ¾Íê³É£©
-    //  load/store£ºµÈ´ı axi_done
+    // D-Cache
     //---------------------------------------------
-    assign MEM_over = (inst_load | inst_store) ? axi_done : MEM_valid;
+    wire        cache_req_valid = MEM_valid && (inst_load | inst_store) && !mem_ex_any;
+    wire        cache_req_ready;
+    wire        cache_resp_valid;
+    wire [31:0] cache_resp_rdata;
+
+    dcache_simple dcache_u (
+        .clk         (clk),
+        .resetn      (resetn),
+        .req_valid   (cache_req_valid),
+        .req_is_store(inst_store),
+        .req_size    (ls_word ? 2'b10 : 2'b00),
+        .req_paddr   (tlb_paddr),
+        .req_wdata   (store_data),
+        .req_ready   (cache_req_ready),
+        .resp_valid  (cache_resp_valid),
+        .resp_rdata  (cache_resp_rdata),
+        .axi_start   (axi_start),
+        .axi_rw      (axi_rw),
+        .axi_addr    (axi_addr),
+        .axi_len     (axi_len),
+        .axi_wdata   (axi_wdata),
+        .axi_wvalid  (axi_wvalid),
+        .axi_wready  (axi_wready),
+        .axi_rdata   (axi_rdata),
+        .axi_rvalid  (axi_rvalid),
+        .axi_done    (axi_done),
+        .axi_busy    (axi_busy)
+    );
+
+    always @(posedge clk) begin
+        if (cache_req_valid) begin
+            $display("MEM_REQ: vaddr=%h paddr=%h load=%b store=%b",
+                     vaddr, tlb_paddr, inst_load, inst_store);
+        end
+        if (cache_resp_valid) begin
+            $display("MEM_CACHE_RESP: rdata=%h", cache_resp_rdata);
+        end
+    end
 
     //---------------------------------------------
-    // MEM_result£ºload ·µ»Ø axi_rdata
-    //             store ·µ»Ø exe_result (²»Ó°ÏìĞ´»Ø¼Ä´æÆ÷µÄÇé¿öÍ¨³£ store ²»Ğ´¼Ä´æÆ÷)
+    // MEM_overï¼š
+    //  éè®¿å­˜æŒ‡ä»¤ï¼šç«‹å³å®Œæˆ
+    //  load/storeï¼šç­‰å¾…cacheå“åº”æˆ–å¼‚å¸¸
     //---------------------------------------------
-    assign MEM_result = inst_load ? axi_rdata : exe_result;
+    assign MEM_over = (inst_load | inst_store) ?
+                      (mem_ex_any ? MEM_valid : cache_resp_valid) :
+                      MEM_valid;
 
     //---------------------------------------------
-    // MEM->WB ×ÜÏß
+    // MEM_resultï¼šload è¿”å›cacheç»“æœå¹¶åšç¬¦å·æ‰©å±•
     //---------------------------------------------
-    wire mem_ex_adel = 1'b0;
-    wire mem_ex_ades = 1'b0;
+    wire [7:0] load_byte = (vaddr[1:0] == 2'd0) ? cache_resp_rdata[7:0]  :
+                           (vaddr[1:0] == 2'd1) ? cache_resp_rdata[15:8] :
+                           (vaddr[1:0] == 2'd2) ? cache_resp_rdata[23:16]:
+                                                  cache_resp_rdata[31:24];
+    wire [31:0] load_data = ls_word ? cache_resp_rdata :
+                            (lb_sign ? {{24{load_byte[7]}}, load_byte} :
+                                       {24'd0, load_byte});
 
+    assign MEM_result = inst_load ? load_data : exe_result;
+
+    //---------------------------------------------
+    // MEM->WB æ€»çº¿
+    //---------------------------------------------
     assign MEM_WB_bus = {
         rf_wen, rf_wdest,
-        MEM_result,         // Ğ´»Ø¼Ä´æÆ÷µÄÊı¾İ
+        MEM_result,         // å†™å›å¯„å­˜å™¨çš„æ•°æ®
         lo_result,
         hi_write, lo_write,
         mfhi, mflo,
         mtc0, mfc0, cp0r_addr,
         syscall, brk, eret,
         mem_ex_adel, mem_ex_ades,
-        exe_result,         // BADVADDR Õ¼Î»
+        mem_ex_tlbl, mem_ex_tlbs, mem_ex_mod,
+        vaddr,              // BADVADDR
         pc
     };
 
