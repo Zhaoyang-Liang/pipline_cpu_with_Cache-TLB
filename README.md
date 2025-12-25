@@ -1,7 +1,7 @@
 # Pipeline CPU on FPGA 
 
 切换语言 / Switch the language:
-- 中文：`README.zh-CN.md`
+- 中文：[README.zh-CN.md](README.zh-CN.md)
 
 
 ## Notes
@@ -85,3 +85,5 @@ Implemented TLB and caches.
 ---
 
 Copyright (c) 2025 Zhaoyang-Liang. All rights reserved.
+
+
