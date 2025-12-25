@@ -81,3 +81,6 @@
 ---
 
 Copyright (c) 2025 Zhaoyang-Liang. All rights reserved.
+
+Mail：budongjishubu@gmail.com
+Class of 2023, Cryptography Science, Nankai University
