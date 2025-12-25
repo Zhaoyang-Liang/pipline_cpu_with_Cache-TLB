@@ -69,7 +69,7 @@
 里面包含了所有内容。
 
 \vspace{1em}
-\noindent\textbf{关键词：} 五级流水CPU、TLB、I/DCache
+\noindent\textbf{关键词：} 五级流水CPU设计图、TLB、I/DCache、github代码
 
 \newpage
 
@@ -362,11 +362,14 @@ assign wb_ex_code_no_int  = mem_ex_tlbl_wb ? 5'd2 :
 \subsection{D-Cache写直达示例（store）}
 
 
+D-cache和TLB我都用ad090000这个例子（一个store指令），可以先看图“
+
 \begin{figure}[H]
     \centering
     \includegraphics[width=\linewidth]{img/Dc.png}
-
 \end{figure}
+
+图中其实写的比较清楚，store后，tag变化，re\_is\_store变为1，然后开始写直达。最后tag变化就是写成功的证明
 
 另一个角度可以看display出来的详细信息，我在写代码的时候增加了display的调错信息，例如以对地址\texttt{0x00000014}的store为例，D-Cache命中后先更新cache行，再通过AXI写直达主存：
 \begin{lstlisting}[language=Verilog]
@@ -378,12 +381,16 @@ PIPE_AXI_DATA: start rw=0 addr=00000014 len=1
 \end{lstlisting}
 该过程说明store命中时不会等待refill，直接进入写直达阶段；AXI写完成后出现\texttt{WRITE-DONE}。
 
+最后效果可以看到从ROM中拿到了这个指令。
+
+那个图中等待TLB的意思准确来说是等待TLB、Dcache、AXI都处理完。
+
 
 
 
 \subsection{TLB命中与异常示例}
 
-大致流程是TLB命中时\texttt{TLB\_LOOKUP}显示hit=1且exc=0；若映射无效或越界，则出现TLBL/TLBS/Modify异常并在WB仲裁后写入CP0（日志含异常码与badvaddr）。
+大致流程是TLB命中时\texttt{TLB\_LOOKUP}显示hit=1且exc=0；若映射无效或越界，则出现TLBL/TLBS/Modify异常并在WB仲裁后写入CP0（日志含异常码与badvaddr）  。 
 
 \begin{figure}[H]
     \centering
@@ -391,10 +398,15 @@ PIPE_AXI_DATA: start rw=0 addr=00000014 len=1
     \caption{TLB命中和非命中}
 \end{figure}
 
+异常：可以看到badaddr、vaddr、i都是同样的0x00000004。（缺页异常（这里是往里面store，但效果一样））。
+
 
 
 
 \subsection{流水暂停示例}
+
+除了3.2 D-Cache 图中展示的那样（图中画出了级联流水线延迟），还有就是下面的一个
+
 Cache miss或AXI busy时，MEM\_allow\_in拉低导致流水暂停；回填或写回完成后恢复。以下以一次store写直达为例：
 \begin{lstlisting}[language=Verilog]
 D$ HIT-STORE-W: new=00000011
@@ -413,7 +425,15 @@ D$ WRITE-DONE
 
 
 \section{实验总结}
-本次实验在原有五级流水CPU上完成了TLB与I/D Cache的最简集成，并通过AXI双通道实现指令与数据的并行访问。通过在MEM阶段统一产生访存异常、在WB阶段统一仲裁上报CP0，保证了TLB异常与对齐异常的正确优先级与处理路径。I-Cache采用只读直映结构，D-Cache采用写直达+写分配，既简化了控制，又能覆盖典型访存场景。仿真日志显示：取指/访存命中路径、miss回填路径、写直达时的流水暂停以及TLB异常上报均按设计运行。整体设计满足教学级“简单、稳定、可解释”的目标，也为后续扩展更复杂的替换策略、写回策略与TLB管理机制打下基础。
+本次实验在原有五级流水CPU上完成了TLB与I/D Cache的最简集成，并通过AXI双通道实现指令与数据的并行访问。通过在MEM阶段统一产生访存异常、在WB阶段统一仲裁上报CP0，保证了TLB异常与对齐异常的正确优先级与处理路径。
+
+I-Cache采用只读直映结构，D-Cache采用写直达+写分配。仿真日志和仿真图都可以说明取指/访存命中路径、miss回填路径、写直达时的流水暂停以及TLB异常上报均按设计运行。
+
+
+
+
+
+
 \label{LastPage}
 
 \end{document}
