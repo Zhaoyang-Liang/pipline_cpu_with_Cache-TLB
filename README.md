@@ -1,4 +1,4 @@
-# Pipeline CPU on FPGA（中文）
+# Pipeline CPU on FPGA
 
 Switch the language:
 
