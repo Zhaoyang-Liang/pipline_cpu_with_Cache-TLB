@@ -1,22 +1,26 @@
-# Pipeline CPU on FPGA 
+# Pipeline CPU on FPGA（中文）
 
-切换语言 / Switch the language:
-- 中文：[README.zh-CN.md](README.zh-CN.md)
+Switch the language:
 
+- English：[README.en.md](README.en.md)
 
-## Notes
-- No plagiarism — for learning and reference only.
-- This version does not require Vivado IP cores.
-- Reports (except the final one) are on branch `bagao` (not `baogao`).
-- If this helps, a star is appreciated.
+## 声明
 
-## Overview
-A 5-stage pipelined, MIPS-like CPU written in Verilog. Key modules include:
-- The 5 pipeline stages: `fetch / decode / exe / mem / wb`
-- Core functional units: `regfile`, `alu`, `multiply`, `cp0`, etc.
-- Top-level `top` integrates CPU + AXI + peripherals for FPGA synthesis/debug
+- 一定不要抄袭啊孩子们
+- 目前版本无需 Vivado IP 核
+- 除了最终实验报告，其余报告在 `bagao` 分支（不是 `baogao` 分支）
+- 帮忙点个 star（如果可以）
 
-## Project Layout (tree)
+## 项目简介
+
+一个基于 Verilog 的五级流水 MIPS-like CPU，主要模块包括：
+
+- `fetch / decode / exe / mem / wb` 五级流水
+- `regfile`、`alu`、`multiply`、`cp0` 等基础功能部件
+- 顶层 `top` 负责把 CPU、AXI 接口、外设等连接在一起，方便在 FPGA 上综合和调试
+
+## 项目文件组成（tree）
+
 ```text
 .
 ├── .vscode
@@ -24,7 +28,7 @@ A 5-stage pipelined, MIPS-like CPU written in Verilog. Key modules include:
 ├── AXI
 │   ├── AXI_FULL_M_module.v
 │   └── axi_slave_module.v
-├── CPU设计图.jpg （Architecture Diagram）
+├── CPU设计图.jpg
 ├── README.md
 ├── adder.v
 ├── alu.v
@@ -49,38 +53,44 @@ A 5-stage pipelined, MIPS-like CPU written in Verilog. Key modules include:
 ├── tlb_simple.v
 ├── top.v
 ├── wb.v
-└── 最终实验报告 （Final Report）
-    ├── img （Images）
-    ├── simkai.ttf （Font）
-    ├── style （Style）
-    ├── 梁朝阳 2311561.pdf （PDF）
-    └── 梁朝阳 2311561.tex （LaTeX）
+└── 最终实验报告
+    ├── img
+    ├── simkai.ttf
+    ├── style
+    ├── 梁朝阳 2311561.pdf
+    └── 梁朝阳 2311561.tex
 ```
 
-## Architecture
+## CPU 架构图
+
 ![CPU设计图.jpg](CPU设计图.jpg)
 
-## Features
-- [x] 5-stage pipelined CPU
-- [x] Forwarding (bypass) unit
-- [x] Exception & interrupt framework (with `cp0`)
-- [x] AXI bus interface (see `AXI/`)
-- [x] TLB
-- [x] I-cache & D-cache
+## 功能模块概览
 
-## Milestones
+- [X] 五级流水 CPU
+- [X] bypass 前递/旁路单元
+- [X] interrupt 异常/中断处理框架（配合 `cp0`）
+- [X] AXI 总线接口（`AXI/` 目录）
+- [X] TLB
+- [X] I-cache & D-cache
+
+## 历程
 
 ### bypass
-Implemented forwarding/bypass to reduce stalls caused by data hazards.
+
+为减少数据相关引入的流水线停顿，实现了前递/旁路单元
 
 ### interrupt
-Added a basic exception/interrupt handling framework (with `cp0`).
+
+支持基本的异常/中断处理框架（配合 `cp0` 模块）
 
 ### AXI
-Provided AXI bus interface modules for FPGA peripherals/memory (in `AXI/`).
+
+针对 FPGA 外设/存储器，提供 AXI 总线接口模块（在 `AXI/` 目录）
 
 ### TLB & cache
-Implemented TLB and caches.
+
+实现了 TLB 和 cache
 
 ---
 
