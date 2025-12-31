@@ -107,6 +107,25 @@ Switch the language:
 
 注意：取到的指令后面就是全是0，我好像一共就写了几条指令进去，不是错了。
 
+```verilog
+// AXI/axi_slave_module.v
+    for(j = 0; j < C_S_RAM_DEPTH; j = j + 1) begin
+        case(j)
+            // D$ miss: lw $t3, 0x0100($zero)
+            0:  ram[j] = 32'h8C0B0100;
+            // TLB miss setup: addiu $t0, $zero, 0x4000
+            1:  ram[j] = 32'h24084000;
+            // data for store: addiu $t1, $zero, 0x1234
+            2:  ram[j] = 32'h24091234;
+            // TLBS: sw $t1, 0($t0)
+            3:  ram[j] = 32'hAD090000;
+            // TLBL: lw $t2, 0($t0)
+            4:  ram[j] = 32'h8D0A0000;
+            default: ram[j] = 32'h00000000; // nop
+        endcase
+    end
+```
+
 ---
 
 
