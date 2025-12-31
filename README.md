@@ -6,7 +6,9 @@ Switch the language:
 
 ## 声明
 
+
 - 一定不要抄袭啊孩子们
+- 使用方法见最下面“导入方法”
 - 目前版本无需 Vivado IP 核
 - 除了最终实验报告，其余报告在 `bagao` 分支（不是 `baogao` 分支）
 - 帮忙点个 star（如果可以）
@@ -23,24 +25,16 @@ Switch the language:
 
 ```text
 .
-├── .vscode
-│   └── settings.json
-├── AXI
-│   ├── AXI_FULL_M_module.v
-│   └── axi_slave_module.v
-├── CPU设计图.jpg
-├── README.md
 ├── adder.v
 ├── alu.v
+├── AXI
+│   ├── AXI_FULL_M_module.v
+│   └── axi_slave_module.v
 ├── bypass_unit.v
 ├── cp0.v
 ├── data_ram.v
 ├── dcache_simple.v
 ├── decode.v
-├── display
-│   ├── lcd_module.dcp
-│   ├── pipeline_cpu.xdc
-│   └── pipeline_cpu_display.v
 ├── exe.v
 ├── fetch.v
 ├── icache_simple.v
@@ -55,15 +49,14 @@ Switch the language:
 ├── wb.v
 └── 最终实验报告
     ├── img
-    ├── simkai.ttf
-    ├── style
     ├── 梁朝阳 2311561.pdf
     └── 梁朝阳 2311561.tex
 ```
 
 ## CPU 架构图
 
-![CPU设计图.jpg](CPU设计图.jpg)
+![CPU设计图.jpg](最终实验报告/img/CPU设计图.jpg)
+
 
 ## 功能模块概览
 
@@ -91,6 +84,27 @@ Switch the language:
 ### TLB & cache
 
 实现了 TLB 和 cache
+
+---
+
+## 导入方法
+
+发现一个大问题是我之前把所有历史的代码也保留了，导致大家不知道导入什么，就导致很多人跑不出来，但是代码本身没有问题（或者问题不大，如果有人发现有bug也可以直接联系我）。我现在把所有历史代码都删了，最后只需要导入下面这些：
+
+1. 在 Vivado 中导入以下图片以参考：
+
+ ![所需文件.png](最终实验报告/img/所需文件.png)
+
+
+之后运行仿真：
+
+ ![只能跑仿真.png](最终实验报告/img/只能跑仿真.png)
+
+
+仿真结果示例，前面的X属于正常现象：
+
+ ![结果.png](最终实验报告/img/结果.png)
+
 
 ---
 
