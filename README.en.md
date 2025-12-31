@@ -6,6 +6,7 @@
 
 ## Notes
 - No plagiarism — for learning and reference only.
+- Use the method at the bottom "Import Method" to import the project.
 - This version does not require Vivado IP cores.
 - Reports (except the final one) are on branch `bagao` (not `baogao`).
 - If this helps, a star is appreciated.
@@ -81,6 +82,24 @@ Provided AXI bus interface modules for FPGA peripherals/memory (in `AXI/`).
 
 ### TLB & cache
 Implemented TLB and caches.
+
+
+## Import Method
+
+I found a big problem is that I previously kept all the historical code, which led many people to not know what to import, so many people couldn't run it, but the code itself is not a problem (or the problem is not big, if you find any bugs, please contact me directly). I have now deleted all the historical code, so you only need to import the following:
+
+1. Import the following images in Vivado for reference:
+
+ ![所需文件.png](最终实验报告/img/所需文件.png)
+
+Then run the simulation:
+
+ ![只能跑仿真.png](最终实验报告/img/只能跑仿真.png)
+
+
+Example of simulation results, the X in front is normal:
+
+ ![结果.png](最终实验报告/img/结果.png)
 
 ---
 
