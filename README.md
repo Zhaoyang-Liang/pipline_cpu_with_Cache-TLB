@@ -1,4 +1,4 @@
-# Pipeline CPU on FPGA
+# Pipeline CPU on FPGA - NKU
 
 Switch the language:
 
@@ -6,7 +6,7 @@ Switch the language:
 
 ## 声明
 
-
+- 南开大学体系结构课程
 - 一定不要抄袭啊孩子们
 - **如果真要拿来写报告记得改几条指令（指令位置见最后）**
 - 使用方法见最下面“导入方法”
